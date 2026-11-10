@@ -5,26 +5,17 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Layers2, ArrowRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
-import './App.css'
+import { AppSidebar } from '@/components/app-sidebar'
+import { ChartAreaInteractive } from '@/components/chart-area-interactive'
+import { DataTable } from '@/components/data-table'
+import { SectionCards } from '@/components/section-cards'
+import { SiteHeader } from '@/components/site-header'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { Toaster } from '@/components/ui/sonner'
+import data from '@/app/dashboard/data.json'
+import './App.css' 
 
-function Dashboard({ logout, username }: { logout: () => void; username: string }) {
-  return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand"><span className="brand-mark">WZ</span><div><strong>WZ-Validierung</strong><span>Forschungsprototyp</span></div></div>
-        <div className="account"><span>{username}</span><Button variant="outline" onClick={logout}>Abmelden</Button></div>
-      </header>
-      <main>
-        <div className="breadcrumb">ARBEITSBEREICH <span>/</span> ÜBERSICHT</div>
-        <section className="intro"><div><p className="eyebrow"><span /> WILLKOMMEN</p><h1>Validierung im Überblick<span>.</span></h1><p className="lead">Wirtschaftszweige gemeinsam mit KI prüfen – strukturiert, nachvollziehbar und auf einen Blick.</p></div><div className="intro-tag"><span>◌</span> Forschungsprototyp</div></section>
-        <section aria-labelledby="overview-title" className="overview"><div className="section-head"><div><p className="eyebrow">IHR ARBEITSBEREICH</p><h2 id="overview-title">Übersicht</h2></div><span className="muted">Aktueller Stand</span></div>
-          <div className="stats"><article className="stat"><div className="stat-head"><span>FÄLLE GESAMT</span><span className="icon">▦</span></div><strong>—</strong><p>Noch keine Daten verfügbar</p></article><article className="stat"><div className="stat-head"><span>ZUR PRÜFUNG</span><span className="icon amber">◷</span></div><strong>—</strong><p>Warten auf eine Entscheidung</p></article><article className="stat"><div className="stat-head"><span>ABGESCHLOSSEN</span><span className="icon green">✓</span></div><strong>—</strong><p>Bereits bearbeitete Fälle</p></article></div>
-        </section>
-        <section className="cases" aria-labelledby="cases-title"><div className="cases-head"><div><p className="eyebrow">VALIDIERUNG</p><h2 id="cases-title">Prüffälle</h2><p>Hier erscheinen die Fälle, sobald Daten verfügbar sind.</p></div><span className="status"><span /> Keine Daten</span></div><div className="table-head" aria-hidden="true"><span>UNTERNEHMEN</span><span>WZ-VORSCHLAG</span><span>KONFIDENZ</span><span>STATUS</span></div><div className="empty"><div className="empty-icon">▤</div><h3>Noch keine Fälle vorhanden</h3><p>Sobald Falldaten importiert wurden, können Sie hier mit der Prüfung beginnen.</p></div></section>
-      </main><footer><span>WZ-VALIDIERUNG <b> / </b> FORSCHUNGSPROTOTYP</span><span>Entscheidungen im Kontext verstehen.</span></footer>
-    </div>
-  )
-}
 function App() {
   const [user, setUser] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
@@ -62,7 +53,28 @@ function App() {
   }
 
   if (checking) return <main><p role="status">Anmeldung wird geprüft …</p></main>
-  if (user) return <><Dashboard username={user} logout={logout} />{error && <p role="alert" className="logout-error">{error}</p>}</>
+  if (user) return (
+    <TooltipProvider>
+      <SidebarProvider style={{ '--sidebar-width': 'calc(var(--spacing) * 72)', '--header-height': 'calc(var(--spacing) * 12)' } as React.CSSProperties}>
+        <AppSidebar variant="inset" username={user} onLogout={logout} />
+        <SidebarInset>
+          <SiteHeader />
+          <div className="flex flex-1 flex-col">
+            <div className="@container/main flex flex-1 flex-col gap-2">
+              <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+                <p className="px-4 text-sm text-muted-foreground lg:px-6">Beispieldaten aus der shadcn-Vorlage. Änderungen werden nicht gespeichert.</p>
+                {error && <div className="px-4 lg:px-6"><Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert></div>}
+                <SectionCards />
+                <div className="px-4 lg:px-6"><ChartAreaInteractive /></div>
+                <DataTable data={data} />
+              </div>
+            </div>
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+      <Toaster />
+    </TooltipProvider>
+  )
   return (
     <div className="flex min-h-svh flex-col items-center justify-center bg-muted px-6 py-12 font-sans text-foreground">
       <div className="flex w-full max-w-sm flex-col gap-6">

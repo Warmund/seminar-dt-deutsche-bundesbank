@@ -10,7 +10,7 @@ docker compose up --build
 
 Das Dashboard ist unter http://localhost:5173 erreichbar, die interaktive API-Dokumentation unter http://localhost:8000/docs. PostgreSQL speichert Daten im Docker-Volume `postgres_data`. Das Schema wird beim ersten Anlegen des Datenbank-Volumes initialisiert; spätere Schemaänderungen benötigen eine Migration.
 
-Das Backend bietet Endpunkte für Fälle und zugeordnete Prüfentscheidungen. Die Oberfläche zeigt weiterhin den leeren Entwurf und liest noch keine Daten aus der API. Die API schützt die Falldaten durch eine Anmeldung und ist ausschließlich für die lokale Entwicklung vorgesehen; die Docker-Ports sind an localhost gebunden. Für einen öffentlichen Betrieb müssen Zugangsschutz und sichere Datenbankzugänge eingerichtet werden.
+Das Backend bietet Endpunkte für Fälle und zugeordnete Prüfentscheidungen. Nach der Anmeldung zeigt die Oberfläche den shadcn-Block dashboard-01 mit gekennzeichneten Beispieldaten; diese sind nicht mit der Fälle-API verbunden und Änderungen werden nicht gespeichert. Die API schützt die Falldaten durch eine Anmeldung und ist ausschließlich für die lokale Entwicklung vorgesehen; die Docker-Ports sind an localhost gebunden. Für einen öffentlichen Betrieb müssen Zugangsschutz und sichere Datenbankzugänge eingerichtet werden.
 
 ## Entwicklung und Tests
 
