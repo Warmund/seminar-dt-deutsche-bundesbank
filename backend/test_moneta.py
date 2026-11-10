@@ -33,7 +33,11 @@ def test_png_validation():
 
 
 @pytest.mark.skipif(not os.environ.get('TEST_DATABASE_URL'), reason='TEST_DATABASE_URL fehlt')
-def test_import_and_image_lifecycle():
+def test_import_and_image_lifecycle(monkeypatch):
+    import image_storage
+    monkeypatch.setattr(image_storage, "configured", lambda: True)
+    monkeypatch.setattr(image_storage, "save_image", lambda *args: "test/image.png")
+    monkeypatch.setattr(image_storage, "download_url", lambda key: "https://storage.example/" + key)
     url = os.environ['TEST_DATABASE_URL']
     schema = 'moneta_test_' + uuid.uuid4().hex
     with psycopg.connect(url, autocommit=True) as c:
@@ -65,7 +69,8 @@ def test_import_and_image_lifecycle():
             Image.new('RGB', (8, 8)).save(png, format='PNG')
             path = '/api/moneta/records/way/123/images/satellite'
             assert client.put(path, content=png.getvalue()).status_code == 200
-            assert client.get(path).content == png.getvalue()
+            assert client.get(path, follow_redirects=False).status_code == 307
+            assert client.get(path, follow_redirects=False).headers["location"] == "https://storage.example/test/image.png"
             assert client.get('/api/moneta/records').json()['items'][0]['satellite'] is True
             assert client.get('/api/moneta/records/way/123').json()['website'] == 'https://example.org'
             assert client.put('/api/moneta/records/node/999/images/osm', content=png.getvalue()).status_code == 404

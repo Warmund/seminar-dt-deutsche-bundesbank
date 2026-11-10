@@ -3,6 +3,10 @@ import json
 from io import BytesIO
 from typing import Annotated, Literal
 
+from botocore.exceptions import BotoCoreError, ClientError
+from starlette.responses import RedirectResponse
+import image_storage
+
 from fastapi import Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from psycopg.types.json import Jsonb
@@ -108,10 +112,16 @@ async def upload_image(osm_type: Literal['node', 'way', 'relation'], osm_id: int
     verify_png(body)
     if not connection.execute('SELECT 1 FROM moneta_records WHERE osm_type=%s AND osm_id=%s', (osm_type, osm_id)).fetchone():
         raise HTTPException(404, 'Zuerst den zugehörigen JSON-Datenpunkt importieren')
+    if not image_storage.configured():
+        raise HTTPException(503, 'Der Bildspeicher ist noch nicht eingerichtet. Bitte später erneut versuchen.')
+    try:
+        key = image_storage.save_image(osm_type, osm_id, kind, body)
+    except (BotoCoreError, ClientError) as exc:
+        raise HTTPException(503, 'Bildspeicher nicht erreichbar; Upload bitte erneut versuchen') from exc
     connection.execute(
-        'INSERT INTO moneta_images (osm_type, osm_id, kind, content) VALUES (%s,%s,%s,%s) '
-        'ON CONFLICT (osm_type, osm_id, kind) DO UPDATE SET content=EXCLUDED.content, updated_at=now()',
-        (osm_type, osm_id, kind, body),
+        'INSERT INTO moneta_images (osm_type, osm_id, kind, object_key, content) VALUES (%s,%s,%s,%s,NULL) '
+        'ON CONFLICT (osm_type, osm_id, kind) DO UPDATE SET object_key=EXCLUDED.object_key, content=NULL, updated_at=now()',
+        (osm_type, osm_id, kind, key),
     )
     return {'ok': True}
 
@@ -140,7 +150,13 @@ def detail(osm_type: str, osm_id: int, connection: Connection):
 
 @app.get('/api/moneta/records/{osm_type}/{osm_id}/images/{kind}', dependencies=Read)
 def image(osm_type: str, osm_id: int, kind: Literal['osm', 'satellite'], connection: Connection):
-    row = connection.execute('SELECT content FROM moneta_images WHERE osm_type=%s AND osm_id=%s AND kind=%s', (osm_type, osm_id, kind)).fetchone()
+    row = connection.execute('SELECT content, object_key FROM moneta_images WHERE osm_type=%s AND osm_id=%s AND kind=%s', (osm_type, osm_id, kind)).fetchone()
     if not row:
+        raise HTTPException(404, 'Bild nicht vorhanden')
+    if row['object_key']:
+        if not image_storage.configured():
+            raise HTTPException(503, 'Bildspeicher nicht konfiguriert')
+        return RedirectResponse(image_storage.download_url(row['object_key']), status_code=307, headers={'Cache-Control': 'private, no-store'})
+    if row['content'] is None:
         raise HTTPException(404, 'Bild nicht vorhanden')
     return Response(bytes(row['content']), media_type='image/png', headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})

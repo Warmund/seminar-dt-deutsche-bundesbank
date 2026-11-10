@@ -47,8 +47,12 @@ CREATE TABLE IF NOT EXISTS moneta_images (
     osm_type text NOT NULL,
     osm_id bigint NOT NULL,
     kind text NOT NULL CHECK (kind IN ('osm', 'satellite')),
-    content bytea NOT NULL CHECK (octet_length(content) <= 3000000),
+    content bytea CHECK (octet_length(content) <= 3000000),
+    object_key text,
     updated_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (osm_type, osm_id, kind),
     FOREIGN KEY (osm_type, osm_id) REFERENCES moneta_records(osm_type, osm_id) ON DELETE CASCADE
 );
+
+ALTER TABLE moneta_images ADD COLUMN IF NOT EXISTS object_key text;
+ALTER TABLE moneta_images ALTER COLUMN content DROP NOT NULL;
