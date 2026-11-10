@@ -37,6 +37,30 @@ class Record(BaseModel):
         return self
 
 
+def clean_text(value):
+    """Web extracts may contain NUL; PostgreSQL text/JSONB cannot store it."""
+    if isinstance(value, str):
+        value.encode('utf-8')  # Reject unpaired Unicode surrogates before reaching PostgreSQL.
+        return value.replace('\x00', ''), value.count('\x00')
+    if isinstance(value, (list, dict)):
+        result = [] if isinstance(value, list) else {}
+        count = 0
+        entries = enumerate(value) if isinstance(value, list) else value.items()
+        for key, item in entries:
+            if isinstance(key, str):
+                key.encode('utf-8')
+                if '\x00' in key:
+                    raise ValueError('Nullzeichen in JSON-Feldnamen')
+            cleaned, removed = clean_text(item)
+            if isinstance(result, list):
+                result.append(cleaned)
+            else:
+                result[key] = cleaned
+            count += removed
+        return result, count
+    return value, 0
+
+
 def reject_constant(value):
     raise ValueError('Nicht endliche Zahl')
 
@@ -64,6 +88,7 @@ def verify_png(body: bytes):
 async def import_record(request: Request, connection: Connection):
     try:
         raw = json.loads(await bounded_body(request), parse_constant=reject_constant)
+        raw, removed = clean_text(raw)
         record = Record.model_validate(raw)
     except (ValueError, ValidationError) as exc:
         raise HTTPException(422, 'Ungültiger MONETA-Datenpunkt: id, type, category, bbox und Unternehmensname prüfen') from exc
@@ -74,7 +99,7 @@ async def import_record(request: Request, connection: Connection):
         'ON CONFLICT (osm_type, osm_id) DO UPDATE SET name=EXCLUDED.name, category=EXCLUDED.category, data=EXCLUDED.data, updated_at=now()',
         (record.type, record.id, name, record.category, Jsonb(raw)),
     )
-    return {'key': f'{record.type}_{record.id}'}
+    return {'key': f'{record.type}_{record.id}', 'removed_null_characters': removed}
 
 
 @app.put('/api/moneta/records/{osm_type}/{osm_id}/images/{kind}', dependencies=Write)

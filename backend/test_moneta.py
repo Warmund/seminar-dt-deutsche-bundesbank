@@ -49,6 +49,11 @@ def test_import_and_image_lifecycle():
         app.dependency_overrides[database] = db
         app.dependency_overrides[current_user] = lambda: {'id': 1, 'username': 'tester'}
         with TestClient(app, headers={'Origin': 'http://localhost:5173'}) as client:
+            dirty = sample() | {'tags': {'name': 'Testfirma', 'website': 'Haar- & K\x00örperpflege'}}
+            imported = client.post('/api/moneta/records', json=dirty)
+            assert imported.status_code == 200
+            assert imported.json()['removed_null_characters'] == 1
+            assert client.get('/api/moneta/records/way/123').json()['tags']['website'] == 'Haar- & Körperpflege'
             assert client.post('/api/moneta/records', json=sample()).status_code == 200
             assert client.post('/api/moneta/records', json=sample() | {'tags': {'name': 'Updated'}}).status_code == 200
             result = client.get('/api/moneta/records').json()
@@ -74,3 +79,15 @@ def test_import_and_image_lifecycle():
         app.dependency_overrides.clear()
         with psycopg.connect(url, autocommit=True) as c:
             c.execute(f'DROP SCHEMA {schema} CASCADE')
+
+
+def test_web_text_null_characters_are_cleaned():
+    from moneta_api import clean_text
+    raw = sample() | {'tags': {'name': 'Firma', 'website': 'Haar- & K\x00örperpflege'}, 'sources': {'wikipedia': 'Text\x00'}, 'extra': ['a\x00b', 42]}
+    cleaned, count = clean_text(raw)
+    assert count == 3
+    assert cleaned['tags']['website'] == 'Haar- & Körperpflege'
+    assert cleaned['extra'] == ['ab', 42]
+    assert raw['tags']['website'] == 'Haar- & K\x00örperpflege'
+    with pytest.raises(ValueError):
+        clean_text({'bad\x00key': 'value'})

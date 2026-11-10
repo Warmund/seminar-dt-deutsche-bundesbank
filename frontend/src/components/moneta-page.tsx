@@ -57,6 +57,7 @@ export function MonetaPage() {
   async function upload() {
     setBusy(true); setError(''); setProgress('Dateien werden geprüft …'); setSelected(null)
     let saved = 0
+    let cleaned = 0
     try {
       const records: string[] = []
       if (jsonFile) {
@@ -86,7 +87,11 @@ export function MonetaPage() {
       const total = records.length + images.length
       for (const body of records) {
         setProgress(`Import ${saved + 1} von ${total}: Unternehmensdaten`)
-        await api('/records', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+        const record = JSON.parse(body)
+        try {
+          const result = await api('/records', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+          cleaned += result.removed_null_characters ?? 0
+        } catch (e) { throw new Error(`${record.type}_${record.id} (${record.tags?.name ?? record.name ?? ''}): ${e instanceof Error ? e.message : 'Import fehlgeschlagen'}`) }
         saved++
       }
       for (const { file, kind } of images) {
@@ -96,10 +101,10 @@ export function MonetaPage() {
         catch (e) { throw new Error(`${file.name}: ${e instanceof Error ? e.message : 'Upload fehlgeschlagen'}`) }
         saved++
       }
-      setProgress(`Import abgeschlossen: ${saved} Datenpunkte und Bilder gespeichert.`)
+      setProgress(`Import abgeschlossen: ${saved} Datenpunkte und Bilder gespeichert.${cleaned ? ` ${cleaned} ungültige Nullzeichen aus Quelltexten entfernt.` : ''}`)
     } catch (e) {
       setError(`${e instanceof Error ? e.message : 'Import fehlgeschlagen'} Bereits gespeichert: ${saved}. Ein erneuter Import kann sicher gestartet werden.`)
-      setProgress('Import angehalten.')
+      setProgress(`Import angehalten.${cleaned ? ` Bis dahin ${cleaned} Nullzeichen bereinigt.` : ''}`)
     } finally { setBusy(false); setOffset(0); setRevision(r => r + 1) }
   }
 
