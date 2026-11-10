@@ -40,18 +40,21 @@ class DecisionIn(BaseModel):
     decision: NonEmpty
 
 
+import auth  # noqa: E402
+
+
 @app.get("/api/health")
 def health(connection: Connection):
     connection.execute("SELECT 1")
     return {"status": "ok"}
 
 
-@app.get("/api/cases")
+@app.get("/api/cases", dependencies=[Depends(auth.current_user)])
 def list_cases(connection: Connection):
     return connection.execute("SELECT * FROM cases ORDER BY id").fetchall()
 
 
-@app.post("/api/cases", status_code=201)
+@app.post("/api/cases", status_code=201, dependencies=[Depends(auth.origin_check), Depends(auth.current_user)])
 def create_case(case: CaseIn, connection: Connection):
     return connection.execute(
         "INSERT INTO cases (company_name, predicted_code, confidence, explanation, source_data) "
@@ -60,7 +63,7 @@ def create_case(case: CaseIn, connection: Connection):
     ).fetchone()
 
 
-@app.get("/api/cases/{case_id}/decisions")
+@app.get("/api/cases/{case_id}/decisions", dependencies=[Depends(auth.current_user)])
 def list_decisions(case_id: int, connection: Connection):
     if not connection.execute("SELECT 1 FROM cases WHERE id = %s", (case_id,)).fetchone():
         raise HTTPException(status_code=404, detail="Fall nicht gefunden")
@@ -69,7 +72,7 @@ def list_decisions(case_id: int, connection: Connection):
     ).fetchall()
 
 
-@app.post("/api/cases/{case_id}/decisions", status_code=201)
+@app.post("/api/cases/{case_id}/decisions", status_code=201, dependencies=[Depends(auth.origin_check), Depends(auth.current_user)])
 def create_decision(case_id: int, decision: DecisionIn, connection: Connection):
     try:
         return connection.execute(
