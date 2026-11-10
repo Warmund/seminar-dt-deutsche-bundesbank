@@ -9,14 +9,15 @@ import { AppSidebar } from '@/components/app-sidebar'
 import { ChartAreaInteractive } from '@/components/chart-area-interactive'
 import { DataTable } from '@/components/data-table'
 import { SectionCards } from '@/components/section-cards'
+import { Toaster } from '@/components/ui/sonner'
+import data from '@/app/dashboard/data.json'
 import { SiteHeader } from '@/components/site-header'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { Toaster } from '@/components/ui/sonner'
-import data from '@/app/dashboard/data.json'
 import './App.css' 
 
 function App() {
+  const [page, setPage] = useState(() => window.location.hash === '#settings' ? 'settings' : window.location.hash === '#moneta' ? 'moneta' : 'dashboard')
   const [user, setUser] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
@@ -27,6 +28,12 @@ function App() {
       if (response.ok) setUser((await response.json()).username)
       else if (response.status !== 401) setError('Der Dienst ist nicht erreichbar. Bitte versuchen Sie es erneut.')
     }).catch(() => setError('Der Dienst ist nicht erreichbar. Bitte versuchen Sie es erneut.')).finally(() => setChecking(false))
+  }, [])
+
+  useEffect(() => {
+    const updatePage = () => setPage(window.location.hash === '#settings' ? 'settings' : window.location.hash === '#moneta' ? 'moneta' : 'dashboard')
+    window.addEventListener('hashchange', updatePage)
+    return () => window.removeEventListener('hashchange', updatePage)
   }, [])
 
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -56,20 +63,16 @@ function App() {
   if (user) return (
     <TooltipProvider>
       <SidebarProvider style={{ '--sidebar-width': 'calc(var(--spacing) * 72)', '--header-height': 'calc(var(--spacing) * 12)' } as React.CSSProperties}>
-        <AppSidebar variant="inset" />
+        <AppSidebar variant="inset" username={user} page={page} onLogout={logout} />
         <SidebarInset>
-          <SiteHeader onLogout={logout} />
-          <div className="flex flex-1 flex-col">
-            <div className="@container/main flex flex-1 flex-col gap-2">
-              <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-                <p className="px-4 text-sm text-muted-foreground lg:px-6">Beispieldaten aus der shadcn-Vorlage. Änderungen werden nicht gespeichert.</p>
-                {error && <div className="px-4 lg:px-6"><Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert></div>}
-                <SectionCards />
-                <div className="px-4 lg:px-6"><ChartAreaInteractive /></div>
-                <DataTable data={data} />
-              </div>
-            </div>
-          </div>
+          <SiteHeader title={page === 'settings' ? 'Einstellungen' : page === 'moneta' ? 'Moneta' : 'Dashboard · Beispielansicht'} />
+          {page === 'dashboard' && <div className="@container/main flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
+            <p className="px-4 text-sm text-muted-foreground lg:px-6">Beispieldaten aus der shadcn-Vorlage. Änderungen werden nicht gespeichert.</p>
+            <SectionCards />
+            <div className="px-4 lg:px-6"><ChartAreaInteractive /></div>
+            <DataTable data={data} />
+          </div>}
+          {error && <div className="p-4"><Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert></div>}
         </SidebarInset>
       </SidebarProvider>
       <Toaster />
