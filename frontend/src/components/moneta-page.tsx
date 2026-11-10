@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { FileJson, Map, Satellite, Upload, Check, LoaderCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -37,6 +38,11 @@ function sourceTexts(value: unknown, path = ''): [string, string][] {
 }
 
 export function MonetaPage() {
+  const jsonInput = useRef<HTMLInputElement>(null)
+  const osmInput = useRef<HTMLInputElement>(null)
+  const osmFolder = useRef<HTMLInputElement>(null)
+  const satelliteInput = useRef<HTMLInputElement>(null)
+  const satelliteFolder = useRef<HTMLInputElement>(null)
   const [jsonFile, setJsonFile] = useState<File | null>(null)
   const [osmFiles, setOsmFiles] = useState<File[]>([])
   const [satelliteFiles, setSatelliteFiles] = useState<File[]>([])
@@ -124,19 +130,30 @@ export function MonetaPage() {
   }
 
   return <div className="flex flex-col gap-6 p-4 lg:p-6">
+    <div className="flex flex-col gap-1"><h1 className="text-2xl font-semibold tracking-tight">Moneta</h1><p className="text-sm text-muted-foreground">Unternehmensdaten und Bildquellen für deine Analyse.</p></div>
     <Card>
-      <CardHeader><CardTitle>Daten importieren</CardTitle><CardDescription>MONETA_extended.json und die lokal erzeugten PNG-Bilder auswählen. Bilder werden über ihren Dateinamen dem Unternehmen zugeordnet. Bestehende Datenpunkte werden aktualisiert; vorhandene Bilder bleiben erhalten.</CardDescription></CardHeader>
-      <CardContent>
-        <FieldGroup>
-          <Field><FieldLabel htmlFor="moneta-json">Angereicherte Daten (JSON)</FieldLabel><Input disabled={busy} id="moneta-json" type="file" accept=".json,application/json" onChange={e => setJsonFile(e.target.files?.[0] ?? null)} /></Field>
-          <div className="grid gap-5 md:grid-cols-2">
-            <Field><FieldLabel htmlFor="moneta-osm">Kartenbilder aus images/osm</FieldLabel><Input disabled={busy} id="moneta-osm" type="file" accept=".png" multiple onChange={e => setOsmFiles(Array.from(e.target.files ?? []))} /><FieldLabel htmlFor="moneta-osm-folder">Oder gesamten osm-Ordner auswählen</FieldLabel><Input disabled={busy} id="moneta-osm-folder" type="file" multiple {...folderAttributes} onChange={e => setOsmFiles(pngFiles(e.target.files))} /><span role="status" className="text-sm text-muted-foreground">{osmFiles.length} Kartenbilder für den Import ausgewählt</span></Field>
-            <Field><FieldLabel htmlFor="moneta-satellite">Satellitenbilder aus images/satellite</FieldLabel><Input disabled={busy} id="moneta-satellite" type="file" accept=".png" multiple onChange={e => setSatelliteFiles(Array.from(e.target.files ?? []))} /><FieldLabel htmlFor="moneta-satellite-folder">Oder gesamten satellite-Ordner auswählen</FieldLabel><Input disabled={busy} id="moneta-satellite-folder" type="file" multiple {...folderAttributes} onChange={e => setSatelliteFiles(pngFiles(e.target.files))} /><span role="status" className="text-sm text-muted-foreground">{satelliteFiles.length} Satellitenbilder für den Import ausgewählt</span></Field>
-          </div>
-          <p className="text-sm text-muted-foreground">Wähle entweder mehrere PNG-Dateien oder den gesamten jeweiligen Bildordner aus. Prüfe die angezeigte Anzahl und starte anschließend den Import. Bilder können ohne erneute JSON-Auswahl ergänzt werden. Maximal 3 MB pro PNG.</p>
-          <div><Button disabled={busy || (!jsonFile && !osmFiles.length && !satelliteFiles.length)} onClick={upload}>{busy ? 'Import läuft …' : 'Import starten'}</Button></div>
-          {progress && <p role="status" className="text-sm text-muted-foreground">{progress}</p>}
-        </FieldGroup>
+      <CardHeader className="gap-2"><div className="flex items-center justify-between gap-4"><CardTitle>Daten importieren</CardTitle><Badge variant="outline">Lokale Aufbereitung</Badge></div><CardDescription>Lade deine angereicherten Daten und die dazugehörigen Bilder hoch.</CardDescription></CardHeader>
+      <CardContent className="flex flex-col gap-6">
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card className="gap-4 shadow-none">
+            <CardHeader><div className="mb-3 flex size-10 items-center justify-center rounded-lg bg-muted"><FileJson className="size-5" /></div><CardTitle>Unternehmensdaten</CardTitle><CardDescription>Die angereicherte MONETA-Datei mit Texten und Metadaten.</CardDescription></CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <FieldGroup><Field><FieldLabel htmlFor="moneta-json" className="sr-only">Angereicherte Daten (JSON)</FieldLabel><input ref={jsonInput} className="sr-only" tabIndex={-1} disabled={busy} id="moneta-json" type="file" accept=".json,application/json" onChange={e => setJsonFile(e.target.files?.[0] ?? null)} /></Field></FieldGroup>
+              <div className="flex min-h-16 items-center gap-3 rounded-lg border border-dashed p-3">{jsonFile ? <Check className="size-4 shrink-0" /> : <FileJson className="size-4 shrink-0 text-muted-foreground" />}<div className="min-w-0"><p className="truncate text-sm">{jsonFile?.name ?? 'Noch keine Datei ausgewählt'}</p><p className="text-xs text-muted-foreground">{jsonFile ? `${(jsonFile.size / 1_000_000).toFixed(1)} MB · Bereit zum Import` : 'MONETA_extended.json · bis 100 MB'}</p></div></div>
+              <Button variant="outline" disabled={busy} onClick={() => jsonInput.current?.click()}>JSON auswählen</Button>
+            </CardContent>
+          </Card>
+          {([{ kind: 'osm', title: 'Kartenbilder', description: 'OpenStreetMap-Karten der Unternehmensstandorte.', icon: Map, files: osmFiles, setFiles: setOsmFiles, input: osmInput, folder: osmFolder }, { kind: 'satellite', title: 'Satellitenbilder', description: 'Satellitenaufnahmen für den visuellen Kontext.', icon: Satellite, files: satelliteFiles, setFiles: setSatelliteFiles, input: satelliteInput, folder: satelliteFolder }]).map(({ kind, title, description, icon: Icon, files, setFiles, input, folder }) => <Card key={kind} className="gap-4 shadow-none">
+            <CardHeader><div className="mb-3 flex size-10 items-center justify-center rounded-lg bg-muted"><Icon className="size-5" /></div><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <FieldGroup><Field><FieldLabel htmlFor={`moneta-${kind}`} className="sr-only">{title}</FieldLabel><input ref={input} className="sr-only" tabIndex={-1} disabled={busy} id={`moneta-${kind}`} type="file" accept=".png" multiple onChange={e => setFiles(pngFiles(e.target.files))} /><input ref={folder} className="sr-only" tabIndex={-1} aria-label={`${title}: Ordner auswählen`} disabled={busy} type="file" multiple {...folderAttributes} onChange={e => setFiles(pngFiles(e.target.files))} /></Field></FieldGroup>
+              <div role="status" className="flex min-h-16 items-center gap-3 rounded-lg border border-dashed p-3">{files.length ? <Check className="size-4 shrink-0" /> : <Icon className="size-4 shrink-0 text-muted-foreground" />}<div><p className="text-sm">{files.length ? `${files.length} Bilder ausgewählt` : 'Noch keine Bilder ausgewählt'}</p><p className="text-xs text-muted-foreground">PNG · bis 3 MB pro Bild</p></div></div>
+              <div className="flex gap-2"><Button className="flex-1" variant="outline" disabled={busy} onClick={() => folder.current?.click()}>Ordner auswählen</Button><Button variant="ghost" disabled={busy} onClick={() => input.current?.click()}>Dateien</Button></div>
+            </CardContent>
+          </Card>)}
+        </div>
+        <div className="flex flex-col gap-4 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-xl text-sm text-muted-foreground">Bilder lassen sich auch einzeln ergänzen. Die Zuordnung erfolgt über den Dateinamen, z. B. way_123.png. Bestehende Daten werden aktualisiert.</p><Button className="shrink-0" disabled={busy || (!jsonFile && !osmFiles.length && !satelliteFiles.length)} onClick={upload}>{busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Upload data-icon="inline-start" />}{busy ? 'Import läuft …' : 'Import starten'}</Button></div>
+        {progress && <p role="status" className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{progress}</p>}
       </CardContent>
     </Card>
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
