@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
@@ -22,6 +23,17 @@ async function api(path: string, options?: RequestInit) {
     throw new Error(message)
   }
   return response.json()
+}
+
+function sourceTexts(value: unknown, path = ''): [string, string][] {
+  if (!value || typeof value !== 'object') return []
+  return Object.entries(value).flatMap(([key, entry]): [string, string][] => {
+    const label = path ? `${path} · ${key}` : key
+    if (typeof entry === 'string') {
+      return entry.trim() && !/^https?:\/\//i.test(entry.trim()) && (entry.length > 180 || /website|wikipedia|wikidata|text|description|content|abstract/i.test(key)) ? [[label, entry]] : []
+    }
+    return sourceTexts(entry, label)
+  })
 }
 
 export function MonetaPage() {
@@ -139,9 +151,24 @@ export function MonetaPage() {
         <div className="flex items-center justify-between gap-4"><span className="text-sm text-muted-foreground">Seite {Math.floor(offset / 25) + 1} von {Math.max(1, Math.ceil(overview.total / 25))}</span><div className="flex gap-2"><Button variant="outline" disabled={loading || offset === 0} onClick={() => setOffset(o => o - 25)}>Zurück</Button><Button variant="outline" disabled={loading || offset + 25 >= overview.total} onClick={() => setOffset(o => o + 25)}>Weiter</Button></div></div>
       </CardContent>
     </Card>
-    {selected && <Card><CardHeader><CardTitle>{selected.name}</CardTitle><CardDescription>{selected.osm_type}_{selected.osm_id} · NACE {selected.category}</CardDescription><Button variant="outline" onClick={() => setSelected(null)}>Details schließen</Button></CardHeader><CardContent className="flex flex-col gap-4">
-      <div className="grid gap-4 md:grid-cols-2">{(['osm', 'satellite'] as const).filter(kind => selected[kind]).map(kind => <figure key={kind}><img className="w-full rounded-lg border" src={`/api/moneta/records/${selected.osm_type}/${selected.osm_id}/images/${kind}?v=${revision}`} alt={kind === 'osm' ? `Karte: ${selected.name}` : `Satellitenbild: ${selected.name}`} /><figcaption className="mt-2 text-sm text-muted-foreground">{kind === 'osm' ? 'OpenStreetMap-Karte' : 'Satellitenbild'}</figcaption></figure>)}</div>
-      <pre className="max-h-96 overflow-auto rounded-lg bg-muted p-4 text-xs whitespace-pre-wrap break-words">{detail ? JSON.stringify(detail, null, 2) : 'Quellen und Metadaten werden geladen …'}</pre>
-    </CardContent></Card>}
+    <Dialog open={!!selected} onOpenChange={open => { if (!open) setSelected(null) }}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>{selected?.name}</DialogTitle>
+          <DialogDescription>{selected?.osm_type}_{selected?.osm_id} · NACE {selected?.category}</DialogDescription>
+        </DialogHeader>
+        {selected && <div className="flex flex-col gap-6">
+          <div className="grid gap-4 md:grid-cols-2">{(['osm', 'satellite'] as const).map(kind => <figure key={kind} className="flex min-w-0 flex-col gap-2">
+            <figcaption className="text-sm font-medium">{kind === 'osm' ? 'OpenStreetMap-Karte' : 'Satellitenbild'}</figcaption>
+            {selected[kind] ? <img className="max-h-96 w-full rounded-lg border object-contain" src={`/api/moneta/records/${selected.osm_type}/${selected.osm_id}/images/${kind}?v=${revision}`} alt={`${kind === 'osm' ? 'Karte' : 'Satellitenbild'}: ${selected.name}`} /> : <p className="rounded-lg border p-6 text-sm text-muted-foreground">Dieses Bild wurde noch nicht hochgeladen.</p>}
+          </figure>)}</div>
+          <section className="flex flex-col gap-4" aria-label="Aufbereitete Texte">
+            <h3 className="font-semibold">Aufbereitete Texte</h3>
+            {!detail ? <p role="status">Quellen werden geladen …</p> : sourceTexts(detail).length ? sourceTexts(detail).map(([label, text]) => <div key={label} className="flex flex-col gap-2"><h4 className="text-sm font-medium">{label}</h4><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</p></div>) : <p className="text-sm text-muted-foreground">Für diesen Datenpunkt sind keine angereicherten Texte vorhanden.</p>}
+          </section>
+          {detail !== null && <details><summary className="cursor-pointer text-sm text-muted-foreground">Alle Quelldaten und Metadaten</summary><pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-muted p-4 text-xs whitespace-pre-wrap break-words">{JSON.stringify(detail, null, 2)}</pre></details>}
+        </div>}
+      </DialogContent>
+    </Dialog>
   </div>
 }
