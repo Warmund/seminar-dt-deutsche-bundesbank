@@ -18,16 +18,5 @@
     @apply bg-background text-foreground;}
   html {
     @apply font-sans;}}
-:root { --primary: #174c43; --primary-foreground: #fff; --ring: #66867d; --input: #d5e0d9; }
-.login-page { min-height: 100vh; display: flex; flex-direction: column; }
-.login-main { flex: 1; width: 100%; display: grid; place-items: center; padding-top: 64px; padding-bottom: 64px; }
-.login-card { width: min(100%, 480px); background: #fff; border: 1px solid #e7ece8; padding: clamp(28px, 5vw, 48px); }
-.login-card h1 { font-size: clamp(36px, 5vw, 48px); }
-.login-form { display: flex; flex-direction: column; gap: 22px; margin-top: 32px; }
-.login-field { display: flex; flex-direction: column; gap: 10px; }
-.login-form input { height: 44px; }
-.login-form button { height: 44px; }
-.login-error, .logout-error { color: #a02d2d; font-size: 13px; line-height: 1.5; margin: 0; }
-.login-note { color: #82918d; font-size: 12px; margin: 24px 0 0; line-height: 1.5; }
 .account { display: flex; align-items: center; gap: 12px; color: #607b72; font-size: 12px; }
-.logout-error { padding: 12px; }
+.logout-error { color: #a02d2d; font-size: 13px; line-height: 1.5; padding: 12px; }

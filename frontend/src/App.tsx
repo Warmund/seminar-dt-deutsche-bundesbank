@@ -1,5 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Layers2, ArrowRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import './App.css'
@@ -60,18 +63,38 @@ function App() {
 
   if (checking) return <main><p role="status">Anmeldung wird geprüft …</p></main>
   if (user) return <><Dashboard username={user} logout={logout} />{error && <p role="alert" className="logout-error">{error}</p>}</>
-  return <div className="app login-page">
-    <header className="topbar"><div className="brand"><span className="brand-mark">WZ</span><div><strong>WZ-Validierung</strong><span>Forschungsprototyp</span></div></div><span className="top-label">MENSCH + KI</span></header>
-    <main className="login-main"><section className="login-card" aria-labelledby="login-title">
-      <p className="eyebrow"><span /> IHR ARBEITSBEREICH</p><h1 id="login-title">Willkommen zurück<span>.</span></h1>
-      <p className="lead">Melden Sie sich an, um mit der Validierung zu beginnen.</p>
-      <form onSubmit={login} className="login-form">
-        <FieldGroup><Field><FieldLabel htmlFor="username">Benutzername</FieldLabel><Input id="username" name="username" autoComplete="username" required maxLength={150} /></Field>
-        <Field><FieldLabel htmlFor="password">Passwort</FieldLabel><Input id="password" name="password" type="password" autoComplete="current-password" required maxLength={1024} /></Field></FieldGroup>
-        {error && <p role="alert" className="login-error">{error}</p>}
-        <Button type="submit" size="lg" disabled={busy}>{busy ? 'Anmeldung läuft …' : 'Anmelden'}</Button>
-      </form><p className="login-note">Zugangsdaten erhalten Sie von der Projektleitung.</p>
-    </section></main><footer><span>WZ-VALIDIERUNG <b> / </b> FORSCHUNGSPROTOTYP</span><span>Entscheidungen im Kontext verstehen.</span></footer>
-  </div>
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center bg-muted px-6 py-12 font-sans text-foreground">
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <div className="flex items-center justify-center gap-2 text-sm font-medium">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Layers2 aria-hidden="true" className="size-4" /></span>
+          WZ-Validierung
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle role="heading" aria-level={1}>Willkommen zurück</CardTitle>
+            <CardDescription>Geben Sie Ihre Zugangsdaten ein, um sich anzumelden.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={login}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="username">Benutzername</FieldLabel>
+                  <Input id="username" name="username" autoComplete="username" required maxLength={150} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="password">Passwort</FieldLabel>
+                  <Input id="password" name="password" type="password" autoComplete="current-password" required maxLength={1024} />
+                </Field>
+                {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+                <Button type="submit" disabled={busy}>{busy ? 'Anmeldung läuft …' : 'Anmelden'} <ArrowRight data-icon="inline-end" aria-hidden="true" /></Button>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
+        <p className="text-center text-sm text-muted-foreground">Zugangsdaten erhalten Sie von der Projektleitung.</p>
+      </div>
+    </div>
+  )
 }
 export default App
