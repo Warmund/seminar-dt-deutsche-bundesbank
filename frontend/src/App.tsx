@@ -15,6 +15,7 @@ import data from '@/app/dashboard/data.json'
 import { SiteHeader } from '@/components/site-header'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import { Analytics } from '@vercel/analytics/react'
 import './App.css' 
 
@@ -79,6 +80,7 @@ function App() {
         </SidebarInset>
       </SidebarProvider>
       <Toaster />
+      <SpeedInsights />
       <Analytics />
     </TooltipProvider>
   )
@@ -113,6 +115,7 @@ function App() {
         </Card>
         <p className="text-center text-sm text-muted-foreground">Zugangsdaten erhalten Sie von der Projektleitung.</p>
       </div>
+      <SpeedInsights />
       <Analytics />
     </div>
   )
