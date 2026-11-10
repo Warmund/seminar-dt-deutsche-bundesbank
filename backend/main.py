@@ -16,6 +16,7 @@ def database():
         raise HTTPException(status_code=503, detail="DATABASE_URL ist nicht konfiguriert")
     try:
         with psycopg.connect(url, row_factory=dict_row) as connection:
+            connection.execute("SET LOCAL search_path TO public")
             yield connection
     except psycopg.OperationalError as exc:
         raise HTTPException(status_code=503, detail="Datenbank nicht erreichbar") from exc
@@ -81,3 +82,6 @@ def create_decision(case_id: int, decision: DecisionIn, connection: Connection):
         ).fetchone()
     except psycopg.errors.ForeignKeyViolation as exc:
         raise HTTPException(status_code=404, detail="Fall nicht gefunden") from exc
+
+
+import moneta_api  # noqa: E402

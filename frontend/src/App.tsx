@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Layers2, ArrowRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { MonetaPage } from '@/components/moneta-page'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChartAreaInteractive } from '@/components/chart-area-interactive'
 import { DataTable } from '@/components/data-table'
@@ -66,6 +67,7 @@ function App() {
         <AppSidebar variant="inset" username={user} page={page} onLogout={logout} />
         <SidebarInset>
           <SiteHeader title={page === 'settings' ? 'Einstellungen' : page === 'moneta' ? 'Moneta' : 'Dashboard · Beispielansicht'} />
+          {page === 'moneta' && <MonetaPage />}
           {page === 'dashboard' && <div className="@container/main flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
             <p className="px-4 text-sm text-muted-foreground lg:px-6">Beispieldaten aus der shadcn-Vorlage. Änderungen werden nicht gespeichert.</p>
             <SectionCards />

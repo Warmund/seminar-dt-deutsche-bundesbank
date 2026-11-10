@@ -33,3 +33,22 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     attempts integer NOT NULL,
     expires_at timestamptz NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS moneta_records (
+    osm_type text NOT NULL CHECK (osm_type IN ('node', 'way', 'relation')),
+    osm_id bigint NOT NULL,
+    name text NOT NULL,
+    category text NOT NULL,
+    data jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (osm_type, osm_id)
+);
+CREATE TABLE IF NOT EXISTS moneta_images (
+    osm_type text NOT NULL,
+    osm_id bigint NOT NULL,
+    kind text NOT NULL CHECK (kind IN ('osm', 'satellite')),
+    content bytea NOT NULL CHECK (octet_length(content) <= 3000000),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (osm_type, osm_id, kind),
+    FOREIGN KEY (osm_type, osm_id) REFERENCES moneta_records(osm_type, osm_id) ON DELETE CASCADE
+);
