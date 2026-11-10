@@ -8,6 +8,9 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 type Item = { osm_type: string; osm_id: string; name: string; category: string; osm: boolean; satellite: boolean }
+const folderAttributes = { webkitdirectory: '', directory: '' }
+const pngFiles = (files: FileList | null) => Array.from(files ?? []).filter(file => /\.png$/i.test(file.name))
+
 type Overview = { total: number; items: Item[] }
 const MAX_SIZE = 3_000_000
 
@@ -115,10 +118,10 @@ export function MonetaPage() {
         <FieldGroup>
           <Field><FieldLabel htmlFor="moneta-json">Angereicherte Daten (JSON)</FieldLabel><Input disabled={busy} id="moneta-json" type="file" accept=".json,application/json" onChange={e => setJsonFile(e.target.files?.[0] ?? null)} /></Field>
           <div className="grid gap-5 md:grid-cols-2">
-            <Field><FieldLabel htmlFor="moneta-osm">Kartenbilder aus images/osm</FieldLabel><Input disabled={busy} id="moneta-osm" type="file" accept=".png" multiple onChange={e => setOsmFiles(Array.from(e.target.files ?? []))} /><span className="text-sm text-muted-foreground">{osmFiles.length} Bilder ausgewählt</span></Field>
-            <Field><FieldLabel htmlFor="moneta-satellite">Satellitenbilder aus images/satellite</FieldLabel><Input disabled={busy} id="moneta-satellite" type="file" accept=".png" multiple onChange={e => setSatelliteFiles(Array.from(e.target.files ?? []))} /><span className="text-sm text-muted-foreground">{satelliteFiles.length} Bilder ausgewählt</span></Field>
+            <Field><FieldLabel htmlFor="moneta-osm">Kartenbilder aus images/osm</FieldLabel><Input disabled={busy} id="moneta-osm" type="file" accept=".png" multiple onChange={e => setOsmFiles(Array.from(e.target.files ?? []))} /><FieldLabel htmlFor="moneta-osm-folder">Oder gesamten osm-Ordner auswählen</FieldLabel><Input disabled={busy} id="moneta-osm-folder" type="file" multiple {...folderAttributes} onChange={e => setOsmFiles(pngFiles(e.target.files))} /><span role="status" className="text-sm text-muted-foreground">{osmFiles.length} Kartenbilder für den Import ausgewählt</span></Field>
+            <Field><FieldLabel htmlFor="moneta-satellite">Satellitenbilder aus images/satellite</FieldLabel><Input disabled={busy} id="moneta-satellite" type="file" accept=".png" multiple onChange={e => setSatelliteFiles(Array.from(e.target.files ?? []))} /><FieldLabel htmlFor="moneta-satellite-folder">Oder gesamten satellite-Ordner auswählen</FieldLabel><Input disabled={busy} id="moneta-satellite-folder" type="file" multiple {...folderAttributes} onChange={e => setSatelliteFiles(pngFiles(e.target.files))} /><span role="status" className="text-sm text-muted-foreground">{satelliteFiles.length} Satellitenbilder für den Import ausgewählt</span></Field>
           </div>
-          <p className="text-sm text-muted-foreground">Bilder können auch später ergänzt werden. PNG: maximal 3 MB pro Bild. Zuerst werden die JSON-Daten importiert.</p>
+          <p className="text-sm text-muted-foreground">Wähle entweder mehrere PNG-Dateien oder den gesamten jeweiligen Bildordner aus. Prüfe die angezeigte Anzahl und starte anschließend den Import. Bilder können ohne erneute JSON-Auswahl ergänzt werden. Maximal 3 MB pro PNG.</p>
           <div><Button disabled={busy || (!jsonFile && !osmFiles.length && !satelliteFiles.length)} onClick={upload}>{busy ? 'Import läuft …' : 'Import starten'}</Button></div>
           {progress && <p role="status" className="text-sm text-muted-foreground">{progress}</p>}
         </FieldGroup>
