@@ -1,5 +1,6 @@
 """Persisted, immutable experiments; each item is claimed before any paid request."""
 import os
+import json
 import uuid
 from typing import Annotated, Literal
 
@@ -33,7 +34,7 @@ class DatasetSelection(BaseModel):
 
 class NewRun(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
-    model: Literal['gpt-6-luna', 'gpt-6.1-terra'] | None = None
+    model: Literal['gpt-6-luna', 'gpt-6.1-terra', 'jev-1.13', 'jev-1.13-free'] | None = None
     method: Literal['zero_shot', 'multi_turn'] = 'zero_shot'
     prompt_config: Literal['Simple', 'Extended'] = 'Simple'
     name: str = Field(min_length=1, max_length=150)
@@ -64,6 +65,8 @@ def dataset(connection: Connection):
 
 @app.post('/api/classification/runs', status_code=201, dependencies=[Depends(origin_check)])
 def create_run(data: NewRun, connection: Connection, user=Depends(current_user)):
+    if data.model and data.model.startswith('jev-') and data.method != 'zero_shot':
+        raise HTTPException(422,'Jev unterstützt keine MONETA-Hinweisextraktion. Bitte Zero-Shot auswählen.')
     if data.method == 'multi_turn' and not all(data.sources.model_dump().values()):
         raise HTTPException(422, 'Multi-Turn verwendet alle verfügbaren Quellen wie MONETA.')
     if data.selection:
@@ -84,10 +87,16 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
             rows.append(row)
         criteria = {}
     model = data.model or os.environ.get('OPENAI_MODEL','gpt-6-luna')
+    if model.startswith('jev-') and data.method != 'zero_shot':
+        raise HTTPException(422,'Jev unterstützt nur das direkte Verfahren.')
     if model not in MODELS:
         raise HTTPException(422,'Bitte ein unterstütztes Modell auswählen.')
     run_id = uuid.uuid4()
-    prompt, clue_prompts = build_prompts(data.method,data.prompt_config,data.sources.model_dump())
+    if model.startswith('jev-'):
+        from jev_api import build_questions
+        prompt, clue_prompts = json.dumps(build_questions(data.prompt_config)), {}
+    else:
+        prompt, clue_prompts = build_prompts(data.method,data.prompt_config,data.sources.model_dump())
     connection.execute('INSERT INTO classification_runs (id,user_id,name,model,prompt,sources,method,prompt_config,clue_prompts,selection) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                        (run_id,user['id'],data.name,model,prompt,Jsonb(data.sources.model_dump()),data.method,data.prompt_config,Jsonb(clue_prompts),Jsonb(criteria)))
     kinds = [kind for kind in ('osm','satellite') if getattr(data.sources,kind)]
@@ -148,7 +157,10 @@ def process_item(run_id: uuid.UUID, position: int, connection: Connection, user=
     connection.execute("UPDATE classification_run_items SET state='running',started_at=now(),finished_at=NULL,error=NULL,attempt=%s WHERE run_id=%s AND position=%s", (attempt,run_id,position))
     connection.commit()
     try:
-        if run['method'] == 'legacy':
+        if run['model'].startswith('jev-'):
+            from jev_api import classify_jev
+            result, clues = classify_jev(run,item,connection,user), {}
+        elif run['method'] == 'legacy':
             result = execute_classification(ClassificationInput(osm_type=item['osm_type'],osm_id=int(item['osm_id']),sources=Sources(**run['sources'])), connection,user,
             row={'name':item['name'],'category':item['reference'],'data':{},'input_features':item['snapshot']['data']['tags']}, images=item['snapshot']['images'], model=run['model'], prompt=run['prompt'])
             clues = {}

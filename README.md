@@ -149,3 +149,26 @@ und speichert die Wahl im Lauf. Alle Hinweise und die Schlussklassifizierung
 verwenden anschließend diese gespeicherte ID. Bestehende Läufe behalten ihr
 Modell; `OPENAI_MODEL` ist nur noch der Standard für API-Anfragen ohne Auswahl.
 Die Zugriffsmöglichkeit auf ein Modell hängt zusätzlich vom OpenAI-Projekt ab.
+
+### Jev über OpenCode
+
+Zusätzlich in der lokalen `.env`: `OPENCODE_API_KEY` und
+`OPENCODE_JEV_MODEL=jev-1.13` (alternativ `jev-1.13-free`). Auf Vercel beide
+Variablen nur im Backend-Projekt setzen, den Key als Secret. Die Oberfläche
+bietet das konfigurierte Jev-Modell neben den GPT-Modellen an.
+
+Jev verwendet die OpenCode-System-One-API statt OpenAI Responses. Eine Choice-Frage
+enthält alle 21 NACE-Abschnitte plus UNK; Simple/Extended steuert die Beschreibung
+der Kriterien. Name, ausgewählte Quelltexte und optionale Bilder sind der State.
+Referenz und Klassenfilter werden nicht übermittelt. Bilder werden serverseitig
+aus dem privaten Speicher gelesen und als PNG-Assets übertragen; diese Jev-Funktion
+ist laut TypeSafe experimentell. Quelle und Format:
+https://opencode.ai/docs/console/models/#jev und https://docs.typesafe.ai/images
+
+Jev liefert keine freien Begründungen oder MONETA-Hinweise. Deshalb ist ausschließlich
+das direkte Zero-Shot-Verfahren verfügbar, als Choice-Adaption des Klassifizierungsziels.
+Es ist keine identische Reproduktion des generativen MONETA-Prompts.
+Klassenwahrscheinlichkeiten und Konfidenz werden unverändert im Lauf gespeichert;
+die Detailansicht zeigt die fünf höchsten Wahrscheinlichkeiten. Leere Begründungsfelder
+werden nicht durch erfundene Texte gefüllt. Fehlertexte enthalten keine Provider-Rohantworten
+oder Zugangsdaten, und es gibt keine automatischen Wiederholungen.

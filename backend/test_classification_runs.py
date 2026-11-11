@@ -154,6 +154,10 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         with connect() as c:
             c.execute("UPDATE moneta_records SET category='A' WHERE osm_id IN (2,3,4)")
         assert {item['reference'] for item in client.get(f'/api/classification/runs/{filtered_id}').json()['items']}=={'B','C'}
+        jev_run=client.post('/api/classification/runs',json=filtered | {'model':'jev-1.13','selection':{'count':1,'classes':['A']}})
+        assert jev_run.status_code==201
+        assert client.get('/api/classification/runs/'+jev_run.json()['id']).json()['model']=='jev-1.13'
+        assert client.post('/api/classification/runs',json=filtered | {'model':'jev-1.13','method':'multi_turn'}).status_code==422
         who['id'] = 2
         assert client.get(f'/api/classification/runs/{first}').status_code == 404
         assert client.post(path).status_code == 404
