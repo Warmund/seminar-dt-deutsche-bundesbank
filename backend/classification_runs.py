@@ -10,7 +10,7 @@ from psycopg.types.json import Jsonb
 from main import app, Connection
 from auth import current_user, origin_check
 from moneta_pipeline import build_prompts, source_texts, next_step, ASSETS
-from classification_api import ClassificationInput, Sources, execute_classification
+from classification_api import ClassificationInput, Sources, execute_classification, MODELS
 
 
 class RecordKey(BaseModel):
@@ -33,6 +33,7 @@ class DatasetSelection(BaseModel):
 
 class NewRun(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    model: Literal['gpt-6-luna', 'gpt-6.1-terra'] | None = None
     method: Literal['zero_shot', 'multi_turn'] = 'zero_shot'
     prompt_config: Literal['Simple', 'Extended'] = 'Simple'
     name: str = Field(min_length=1, max_length=150)
@@ -82,10 +83,13 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
                 raise HTTPException(422,'Ein ausgewähltes Unternehmen ist nicht mehr vorhanden.')
             rows.append(row)
         criteria = {}
+    model = data.model or os.environ.get('OPENAI_MODEL','gpt-6-luna')
+    if model not in MODELS:
+        raise HTTPException(422,'Bitte ein unterstütztes Modell auswählen.')
     run_id = uuid.uuid4()
     prompt, clue_prompts = build_prompts(data.method,data.prompt_config,data.sources.model_dump())
     connection.execute('INSERT INTO classification_runs (id,user_id,name,model,prompt,sources,method,prompt_config,clue_prompts,selection) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-                       (run_id,user['id'],data.name,os.environ.get('OPENAI_MODEL','gpt-6-luna'),prompt,Jsonb(data.sources.model_dump()),data.method,data.prompt_config,Jsonb(clue_prompts),Jsonb(criteria)))
+                       (run_id,user['id'],data.name,model,prompt,Jsonb(data.sources.model_dump()),data.method,data.prompt_config,Jsonb(clue_prompts),Jsonb(criteria)))
     kinds = [kind for kind in ('osm','satellite') if getattr(data.sources,kind)]
     images_by_record = {}
     if kinds:

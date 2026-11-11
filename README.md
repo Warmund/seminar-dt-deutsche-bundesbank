@@ -140,3 +140,12 @@ wird der Lauf nicht angelegt. Kriterien und konkrete Eingaben werden gemeinsam
 im Lauf gespeichert. Klassenfilter werden nicht an das Modell übermittelt.
 Die Bildverweise werden gebündelt gelesen und Einträge gesammelt geschrieben,
 damit auch größere Auswahlen ohne einzelne Browseranfragen angelegt werden.
+
+### Modellauswahl
+
+Beim Anlegen eines Laufs kann zwischen `gpt-6-luna` und `gpt-6.1-terra`
+gewählt werden. Das Backend akzeptiert nur diese beiden IDs für neue Läufe
+und speichert die Wahl im Lauf. Alle Hinweise und die Schlussklassifizierung
+verwenden anschließend diese gespeicherte ID. Bestehende Läufe behalten ihr
+Modell; `OPENAI_MODEL` ist nur noch der Standard für API-Anfragen ohne Auswahl.
+Die Zugriffsmöglichkeit auf ein Modell hängt zusätzlich vom OpenAI-Projekt ab.

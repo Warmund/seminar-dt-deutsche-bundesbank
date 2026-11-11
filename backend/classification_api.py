@@ -14,6 +14,8 @@ from main import app, Connection
 from auth import current_user, origin_check
 import image_storage
 
+MODELS = {'gpt-6-luna': 'GPT-6 Luna', 'gpt-6.1-terra': 'GPT-6.1 Terra'}
+
 SECTIONS = json.loads(Path(__file__).with_name('nace_sections.json').read_text())
 
 
@@ -74,7 +76,7 @@ def text_features(record):
 
 @app.get('/api/classification/status', dependencies=[Depends(current_user)])
 def status():
-    return {'configured': bool(os.environ.get('OPENAI_API_KEY')), 'model': os.environ.get('OPENAI_MODEL', 'gpt-6-luna')}
+    return {'configured': bool(os.environ.get('OPENAI_API_KEY')), 'model': os.environ.get('OPENAI_MODEL', 'gpt-6-luna'), 'models': MODELS}
 
 
 @app.post('/api/classification', dependencies=[Depends(origin_check)])

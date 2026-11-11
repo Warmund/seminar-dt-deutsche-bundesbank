@@ -96,7 +96,7 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         monkeypatch.setattr(pipeline,'image_content',image_content)
         model_calls=[]
         def model_call(connection,user,model,prompt,content,clue=False):
-            model_calls.append({'content':content,'clue':clue,'prompt':prompt})
+            model_calls.append({'model':model,'content':content,'clue':clue,'prompt':prompt})
             if len(model_calls) == 3:
                 raise HTTPException(503,'stage failure')
             response=SimpleNamespace(model='fake',usage=SimpleNamespace(input_tokens=10,output_tokens=2))
@@ -136,12 +136,16 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         dataset=client.get('/api/classification/dataset').json()
         assert dataset['total']==4
         assert next(entry['count'] for entry in dataset['classes'] if entry['category']=='B')==2
-        filtered={k:v for k,v in data.items() if k!='items'} | {'selection':{'count':3,'classes':['B','C']}}
+        filtered={k:v for k,v in data.items() if k!='items'} | {'model':'gpt-6.1-terra','selection':{'count':3,'classes':['B','C']}}
         created=client.post('/api/classification/runs',json=filtered)
         assert created.status_code==201,created.text
         filtered_id=created.json()['id']
         frozen=client.get(f'/api/classification/runs/{filtered_id}').json()
         assert len(frozen['items'])==3 and {item['reference'] for item in frozen['items']}=={'B','C'}
+        assert frozen['model']=='gpt-6.1-terra'
+        assert client.post(f'/api/classification/runs/{filtered_id}/items/0').status_code==200
+        assert model_calls[-1]['model']=='gpt-6.1-terra'
+        assert client.post('/api/classification/runs',json=filtered | {'model':'unapproved-model'}).status_code==422
         assert frozen['selection']['classes']==['B','C'] and frozen['selection']['count']==3
         assert [item['osm_id'] for item in frozen['items']]==['4','2','3']
         for selection in [{'count':4,'classes':['B','C']},{'count':1,'classes':[]},{'count':1,'classes':['Z']},{'count':True,'classes':['B']},{'count':1,'classes':['B','B']},{'count':1001,'classes':['B']}]:
