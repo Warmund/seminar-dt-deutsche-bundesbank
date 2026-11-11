@@ -8,6 +8,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from classification_api import model_call
 import image_storage
+from source_text import prepare_text
 
 ASSETS = json.loads(Path(__file__).with_name('moneta_prompts.json').read_text())
 MODALITIES = ('osm', 'satellite', 'wikidata', 'wikipedia', 'website')
@@ -33,7 +34,7 @@ def build_prompts(method, variant, sources):
     return prompt, clues
 
 
-def source_texts(record):
+def source_texts(record, *, for_jev=False):
     source = record.get('sources') if 'sources' in record else (record.get('tags') or record.get('osm_tags') or {})
     result = {}
     for kind in ('wikidata','wikipedia','website'):
@@ -42,7 +43,9 @@ def source_texts(record):
             # Failed enrichment leaves URL/QID/wiki links. They are not fetched by the classifier.
             if re.fullmatch(r'(https?://|www\.)\S+|Q\d+|[a-z-]{2,12}:[^\n]+',value.strip()):
                 continue
-            result[kind] = value.strip()[:6000]
+            prepared = prepare_text(value,kind) if for_jev else value.strip()[:6000]
+            if prepared:
+                result[kind] = prepared
     return result
 
 

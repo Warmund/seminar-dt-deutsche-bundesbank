@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from psycopg.types.json import Jsonb
 
+from source_text import VERSION as TEXT_PREPROCESSING_VERSION
 from main import app, Connection
 from auth import current_user, origin_check
 from moneta_pipeline import build_prompts, source_texts, next_step, ASSETS
@@ -112,8 +113,10 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
             images_by_record.setdefault((image['osm_type'],image['osm_id']),{})[image['kind']] = {'object_key':image['object_key']}
     inserts = []
     for position, row in enumerate(rows):
-        snapshot = {'texts':source_texts(row['data']) if data.sources.text else {},
+        snapshot = {'texts':source_texts(row['data'],for_jev=model.startswith('jev-')) if data.sources.text else {},
                     'images':images_by_record.get((row['osm_type'],row['osm_id']),{})}
+        if model.startswith('jev-'):
+            snapshot['text_preprocessing'] = TEXT_PREPROCESSING_VERSION
         inserts.append((run_id,position,row['osm_type'],str(row['osm_id']),row['name'],row['category'],Jsonb(snapshot)))
     with connection.cursor() as cursor:
         cursor.executemany('INSERT INTO classification_run_items (run_id,position,osm_type,osm_id,name,reference,snapshot) VALUES (%s,%s,%s,%s,%s,%s,%s)',inserts)

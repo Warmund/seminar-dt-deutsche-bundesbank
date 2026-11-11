@@ -172,3 +172,22 @@ Klassenwahrscheinlichkeiten und Konfidenz werden unverändert im Lauf gespeicher
 die Detailansicht zeigt die fünf höchsten Wahrscheinlichkeiten. Leere Begründungsfelder
 werden nicht durch erfundene Texte gefüllt. Fehlertexte enthalten keine Provider-Rohantworten
 oder Zugangsdaten, und es gibt keine automatischen Wiederholungen.
+
+### Textaufbereitung für Jev
+
+Neue Jev-Läufe bereiten Quelltexte vor dem 6.000-Zeichen-Limit auf (`jev-text-v1`).
+Die Verarbeitung entfernt erkennbare eigenständige Navigations-/Consent-Texte,
+normalisiert Leerzeichen und entfernt Wiederholungen. Tätigkeits- und
+Produkt-/Dienstleistungsbeschreibungen werden anhand sprachlicher Merkmale
+priorisiert; ausgewählte Passagen bleiben in ihrer ursprünglichen Reihenfolge.
+Auch Passagen nach den ersten 6.000 Zeichen können dadurch aufgenommen werden.
+Für Wikidata-JSON mit `label`/`claims` werden wirtschaftlich relevante Properties
+vor anderen Claims aufgenommen. Es werden keine Inhalte generiert oder Webseiten
+nachgeladen und keine zusätzlichen API-Aufrufe ausgelöst.
+
+Dies ist eine heuristische Auswahl, kein vollständiger semantischer Extraktor:
+Nicht erkannte Boilerplate kann erhalten bleiben und relevante Passagen können
+weiterhin fehlen. Die Accuracy-Verbesserung muss separat gemessen werden.
+Originaldaten und bestehende Lauf-Snapshots bleiben unverändert. GPT-Läufe nutzen
+weiterhin ihre bisherige Textaufbereitung. Neue Jev-Snapshots speichern die
+Verarbeitungsversion und die tatsächlich ausgewählten Texte.

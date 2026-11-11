@@ -154,8 +154,16 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         with connect() as c:
             c.execute("UPDATE moneta_records SET category='A' WHERE osm_id IN (2,3,4)")
         assert {item['reference'] for item in client.get(f'/api/classification/runs/{filtered_id}').json()['items']}=={'B','C'}
+        noisy_text=('Historical archive entry. ' * 400) + 'We manufacture medical equipment for hospitals.'
+        with connect() as c:
+            c.execute("UPDATE moneta_records SET data=%s WHERE osm_type='node' AND osm_id=4",(Jsonb({'tags':{'website':noisy_text}}),))
         jev_run=client.post('/api/classification/runs',json=filtered | {'model':'jev-1.13','selection':{'count':1,'classes':['A']}})
         assert jev_run.status_code==201
+        with connect() as c:
+            snapshot=c.execute('SELECT snapshot FROM classification_run_items WHERE run_id=%s',(jev_run.json()['id'],)).fetchone()['snapshot']
+            assert snapshot['text_preprocessing']=='jev-text-v1'
+            assert 'We manufacture medical equipment' in snapshot['texts']['website']
+            assert c.execute("SELECT data FROM moneta_records WHERE osm_type='node' AND osm_id=4").fetchone()['data']['tags']['website']==noisy_text
         assert client.get('/api/classification/runs/'+jev_run.json()['id']).json()['model']=='jev-1.13'
         assert client.post('/api/classification/runs',json=filtered | {'model':'jev-1.13','method':'multi_turn'}).status_code==422
         who['id'] = 2
