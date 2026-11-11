@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
@@ -15,7 +16,7 @@ type RecordItem = { osm_type: string; osm_id: string; name: string; category: st
 const key = (item: RecordItem) => `${item.osm_type}_${item.osm_id}`
 const steps = ['Daten auswählen', 'Quellen zusammenstellen', 'LLM-Klassifizierung', 'Ergebnisse prüfen']
 const sourceOptions = [
-  { id: 'text', label: 'Texte & OSM-Tags', description: 'Angereicherte Inhalte und Unternehmensmerkmale', icon: FileText },
+  { id: 'text', label: 'Quelltexte', description: 'Wikidata, Wikipedia und Website', icon: FileText },
   { id: 'osm', label: 'OpenStreetMap', description: 'Kartenbilder zur räumlichen Einordnung', icon: Map },
   { id: 'satellite', label: 'Satellitenbilder', description: 'Visueller Kontext des Standorts', icon: Satellite },
 ] as const
@@ -28,6 +29,8 @@ export function NewClassificationRun({ onCreated }: { onCreated: (id: string) =>
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<RecordItem[]>([])
   const [sources, setSources] = useState({ text: true, osm: true, satellite: true })
+  const [method, setMethod] = useState('zero_shot')
+  const [promptConfig, setPromptConfig] = useState('Simple')
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const [config, setConfig] = useState<{ configured: boolean; model: string } | null>(null)
@@ -56,7 +59,7 @@ export function NewClassificationRun({ onCreated }: { onCreated: (id: string) =>
   async function start() {
     setSaving(true); setError('')
     try {
-      const response = await fetch('/api/classification/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, items: selected.map(item => ({ osm_type: item.osm_type, osm_id: item.osm_id })), sources }) })
+      const response = await fetch('/api/classification/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, method, prompt_config: promptConfig, items: selected.map(item => ({ osm_type: item.osm_type, osm_id: item.osm_id })), sources }) })
       const body = await response.json()
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Lauf konnte nicht angelegt werden.')
       onCreated(body.id)
@@ -83,11 +86,11 @@ export function NewClassificationRun({ onCreated }: { onCreated: (id: string) =>
         <div className="flex flex-wrap items-center justify-between gap-3"><Button size="sm" variant="ghost" disabled={!selected.length || running} onClick={() => setSelected([])}>Auswahl aufheben</Button><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={!offset || loading || running} onClick={() => { setLoading(true); setError(''); setOffset(o => o - 10) }}>Zurück</Button><span className="text-xs text-muted-foreground">{Math.floor(offset / 10) + 1} / {Math.max(1, Math.ceil(data.total / 10))}</span><Button variant="outline" size="sm" disabled={offset + 10 >= data.total || loading || running} onClick={() => { setLoading(true); setError(''); setOffset(o => o + 10) }}>Weiter</Button></div></div>
       </CardContent></Card>
       <Card><CardHeader><CardTitle>Durchlauf konfigurieren</CardTitle><CardDescription>Wähle die Quellen für die Klassifizierung.</CardDescription></CardHeader><CardContent className="flex flex-col gap-5">
-        <FieldGroup><Field><FieldLabel htmlFor="run-name">Name des Laufs</FieldLabel><Input id="run-name" value={name} maxLength={150} placeholder="z. B. Baseline · alle Quellen" disabled={saving} onChange={e => setName(e.target.value)} /></Field>{sourceOptions.map(({ id, label, description, icon: Icon }) => <Field key={id} orientation="horizontal"><Icon className="size-4 shrink-0 text-muted-foreground" /><div className="flex-1"><FieldLabel htmlFor={`source-${id}`}>{label}</FieldLabel><p className="mt-1 text-xs text-muted-foreground">{description}</p></div><Switch id={`source-${id}`} disabled={running} checked={sources[id]} onCheckedChange={checked => setSources(previous => ({ ...previous, [id]: checked }))} /></Field>)}</FieldGroup>
+        <FieldGroup><Field><FieldLabel>Verfahren</FieldLabel><ToggleGroup type="single" variant="outline" value={method} disabled={saving} onValueChange={value => { if (value) { setMethod(value); if (value === 'multi_turn') setSources({ text: true, osm: true, satellite: true }) } }} aria-label="Klassifizierungsverfahren"><ToggleGroupItem value="zero_shot">Zero-Shot</ToggleGroupItem><ToggleGroupItem value="multi_turn">Multi-Turn</ToggleGroupItem></ToggleGroup><p className="text-xs text-muted-foreground">{method === 'multi_turn' ? 'Bis zu fünf getrennte Quellenanalysen, danach Klassifizierung anhand der Hinweise. Alle verfügbaren Quellen werden verwendet.' : 'Ein Aufruf pro Unternehmen mit Name und ausgewählten Quellen.'}</p></Field><Field><FieldLabel>MONETA-Prompt</FieldLabel><ToggleGroup type="single" variant="outline" value={promptConfig} disabled={saving} onValueChange={value => { if (value) setPromptConfig(value) }} aria-label="Promptumfang"><ToggleGroupItem value="Simple">Simple</ToggleGroupItem><ToggleGroupItem value="Extended">Extended</ToggleGroupItem></ToggleGroup><p className="text-xs text-muted-foreground">{promptConfig === 'Extended' ? 'Abschnitte mit Beschreibungen, Einschlüssen und Ausschlüssen.' : 'Abschnittscodes und Titel.'}</p></Field><Field><FieldLabel htmlFor="run-name">Name des Laufs</FieldLabel><Input id="run-name" value={name} maxLength={150} placeholder="z. B. Baseline · alle Quellen" disabled={saving} onChange={e => setName(e.target.value)} /></Field>{sourceOptions.map(({ id, label, description, icon: Icon }) => <Field key={id} orientation="horizontal"><Icon className="size-4 shrink-0 text-muted-foreground" /><div className="flex-1"><FieldLabel htmlFor={`source-${id}`}>{label}</FieldLabel><p className="mt-1 text-xs text-muted-foreground">{description}</p></div><Switch id={`source-${id}`} disabled={running || method === 'multi_turn'} checked={sources[id]} onCheckedChange={checked => setSources(previous => ({ ...previous, [id]: checked }))} /></Field>)}</FieldGroup>
         <div className="flex flex-col gap-2 rounded-lg bg-muted p-4"><div className="flex items-center gap-2 text-sm font-medium"><Layers className="size-4" />NACE-Abschnitte A–U</div><p className="text-xs leading-relaxed text-muted-foreground">Das Modell ordnet die Haupttätigkeit einem NACE-Abschnitt des MONETA-Schemas zu. Bei unzureichenden Belegen ist das Ergebnis UNK.</p></div>
         <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Ausgewählte Unternehmen</span><span className="font-medium">{selected.length}</span></div>
-        <Button disabled={running || !name.trim() || !selected.length || !Object.values(sources).some(Boolean)} onClick={start}>{running ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Play data-icon="inline-start" />}{running ? 'Wird gespeichert …' : 'Lauf anlegen'}</Button>
-        <p className="text-xs text-muted-foreground">Fehlende Bilder werden als nicht verfügbar ausgewiesen. Texte werden auf maximal 24.000 Zeichen begrenzt. Ein laufender API-Aufruf wird beim Stoppen noch abgeschlossen.</p>
+        <Button disabled={running || !name.trim() || !selected.length} onClick={start}>{running ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Play data-icon="inline-start" />}{running ? 'Wird gespeichert …' : 'Lauf anlegen'}</Button>
+        <p className="text-xs text-muted-foreground">Fehlende Bilder werden als nicht verfügbar ausgewiesen. Quelltexte werden auf 6.000 Zeichen je Quelle begrenzt. Ohne verfügbare Quellen wird wie in MONETA nur der Name verwendet. Multi-Turn benötigt bis zu sechs kostenpflichtige Aufrufe je Unternehmen. Ein laufender API-Aufruf wird beim Stoppen noch abgeschlossen.</p>
       </CardContent></Card>
     </div>
   </div>

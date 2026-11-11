@@ -97,3 +97,34 @@ Fertige Einträge werden beim Fortsetzen nicht erneut angefragt. Fehler und
 Neuversuch, der erneut Kosten verursachen kann. Eine Sperre verhindert gleichzeitige
 API-Aufrufe innerhalb desselben Laufs. Frühere, ausschließlich im Seitenzustand
 vorhandene Ergebnisse können nicht nachträglich wiederhergestellt werden.
+
+### MONETA-Verfahren
+
+Neue Läufe bieten **Zero-Shot** (ein Modellaufruf pro Unternehmen) und
+**Multi-Turn** (ein Hinweisaufruf je vorhandener Modalität, dann eine abschließende
+textbasierte Klassifizierung aus Hinweisen und Name). Multi-Turn verwendet wie
+MONETA alle verfügbaren Quellen: OSM, Satellit, Wikidata, Wikipedia, Website.
+Fehlende Quellen werden ausgelassen. Zero-Shot erlaubt eine Quellenauswahl bis
+hin zur reinen Namensbaseline. Originale MONETA-Prompts und NACE-Beschreibungen
+sind unter MIT in `backend/moneta_prompts.json` übernommen, mit Lizenz in
+`backend/LICENSE.moneta`. Simple enthält Titel/Codes, Extended ergänzt Beschreibungen,
+Ein- und Ausschlüsse. Die gespeicherten Prompts dokumentieren den verwendeten Stand.
+
+OpenAI-Anpassungen: strukturiertes Ergebnis mit deutschen Begründungen statt
+MONETAs LLM_RESPONSE/EXPLANATION, Schutz vor Anweisungen aus Quelltexten,
+maximal 6.000 Zeichen je Textquelle und Bilder mit `detail=low`.
+Nicht angereicherte Links/QIDs/Wikipedia-Verweise werden als fehlender Text
+behandelt und nicht online aufgelöst. OSM-Tags über den Namen hinaus werden in
+neuen Läufen nicht als zusätzliche Features eingespeist. Diese Anpassungen und
+das andere Modell verhindern eine exakte Reproduktion der lokalen Paper-Ergebnisse.
+
+Jeder Hinweisaufruf wird unmittelbar mit Modell und Tokenverbrauch in PostgreSQL
+gespeichert. Ein HTTP-Aufruf verarbeitet nur einen Hinweisschritt oder die finale
+Klassifizierung, damit Serverless-Laufzeitgrenzen nicht über sechs Modellaufrufe
+hinweg überschritten werden. Fortsetzen verwendet gespeicherte Hinweise wieder;
+Hinweise werden nicht zwischen unabhängigen Läufen geteilt. Nach einem Fehler
+wird nur der fehlgeschlagene Schritt ausdrücklich wiederholt. Der Schlussaufruf
+sieht ausschließlich Hinweise und Name, keine Originaltexte, Bilder oder Referenz.
+Die Ergebnisdetails zeigen Hinweise und getrennte Tokenzahlen für Hinweisanalysen
+und Schlussklassifizierung. Das Stundenlimit zählt jeden einzelnen Modellaufruf.
+Bestehende Läufe behalten ihr bisheriges Verfahren (`legacy`), Prompts und Eingaben.

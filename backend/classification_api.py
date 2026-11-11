@@ -119,6 +119,17 @@ def execute_classification(data, connection, user, row=None, images=None, model=
         used.append(kind)
     if not used:
         raise HTTPException(422, 'Keine der ausgewählten Quellen ist verfügbar.')
+    model = model or os.environ.get('OPENAI_MODEL', 'gpt-6-luna')
+    response, prediction = model_call(connection, user, model, prompt or PROMPT, content)
+    return {'prediction': prediction.model_dump(), 'reference': row['category'], 'model': response.model,
+            'used_sources': used, 'missing_sources': missing,
+            'input_tokens': response.usage.input_tokens if response.usage else None,
+            'output_tokens': response.usage.output_tokens if response.usage else None}
+
+
+def model_call(connection, user, model, prompt, content, clue=False):
+    if not os.environ.get('OPENAI_API_KEY'):
+        raise HTTPException(503, 'OpenAI-Key ist im Backend noch nicht konfiguriert.')
     # Serialize reservations per user, so parallel requests cannot bypass the hourly limit.
     connection.execute('SELECT pg_advisory_xact_lock(%s)', (user['id'],))
     count = connection.execute("SELECT count(*) AS n FROM classification_requests WHERE user_id=%s AND created_at > now() - interval '1 hour'", (user['id'],)).fetchone()['n']
@@ -126,17 +137,17 @@ def execute_classification(data, connection, user, row=None, images=None, model=
         raise HTTPException(429, 'Maximal 100 Klassifizierungsanfragen pro Stunde. Bitte später erneut versuchen.')
     connection.execute('INSERT INTO classification_requests (user_id) VALUES (%s)', (user['id'],))
     connection.commit()
-    model = model or os.environ.get('OPENAI_MODEL', 'gpt-6-luna')
     try:
         with OpenAI(timeout=90, max_retries=0) as client:
-            response = client.responses.parse(
+            options = dict(
                 model=model, store=False, max_output_tokens=4000,
                 **({'reasoning': {'effort': 'low'}} if model.startswith('gpt-6') else {}),
-                instructions=prompt or PROMPT,
-                input=[{'role': 'user', 'content': content}], text_format=Prediction,
+                instructions=prompt,
+                input=[{'role': 'user', 'content': content}],
             )
-        prediction = response.output_parsed
-        if response.status != 'completed' or prediction is None:
+            response = client.responses.create(**options) if clue else client.responses.parse(**options, text_format=Prediction)
+        prediction = response.output_text if clue else response.output_parsed
+        if response.status != 'completed' or not prediction:
             raise HTTPException(502, 'Das Modell hat kein vollständiges Klassifizierungsergebnis geliefert.')
     except RateLimitError:
         raise HTTPException(503, 'OpenAI-Kontingent oder Anfragelimit erreicht. Bitte API-Abrechnung prüfen oder später erneut versuchen.') from None
@@ -144,7 +155,5 @@ def execute_classification(data, connection, user, row=None, images=None, model=
         raise HTTPException(504, 'Die Modellantwort hat zu lange gedauert. Kein automatischer Neuversuch.') from None
     except OpenAIError:
         raise HTTPException(502, 'OpenAI-Anfrage fehlgeschlagen. Bitte Modell und Backend-Konfiguration prüfen.') from None
-    return {'prediction': prediction.model_dump(), 'reference': row['category'], 'model': response.model,
-            'used_sources': used, 'missing_sources': missing,
-            'input_tokens': response.usage.input_tokens if response.usage else None,
-            'output_tokens': response.usage.output_tokens if response.usage else None}
+
+    return response, prediction

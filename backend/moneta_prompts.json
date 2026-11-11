@@ -1,0 +1,160 @@
+{
+  "zero_shot": "\nYou are a helpful assistant that designed to understand economical activities from various resources. \nThese resources can be OpenStreetMap (OSM) and Satellite Imagery, Sources online such as Wikidata, Wikipedia and/or Website.\n\nFrom the images, you will to analyze and identify geospatial features such as but not limited to:\n- Buildings\n- Terrains\n- Streets\n\nFrom the sources, you will analyze and identify the context related to economical activity such as:\n- Products\n- Services\n- Activities\n- Business Type\n- Industry\n\nBased on these attributes and the given name of the entity you will identify NACE Economical Activity sector code.\n\n{NACE_CONTEXT}\n\nFollowing sources will be provided: {resources}\nNote that you may not be given all of the sources.\nosm: OSM Image\nsatellite: Satellite Image\nsource: Source (Wikidata, Wikipedia, Website)\n\nIf no sources are provided, you will use the name of the entity to identify NACE Economical Activity sector code.\n\n{OUTPUT_FORMAT}\n",
+  "multi_turn": "You are a helpful assistant that designed to understand economical activities from various resources.\nYou will be provided with clues from different sources such as Wikidata, Wikipedia, websites, OpenStreetMap (OSM) images, and satellite images.\nBased on these attributes and the given name of the entity you will identify NACE Economical Activity sector code.\n\n{NACE_CONTEXT}\n\nNote that you may not be given all of the clues. And if you are not given any clues, you should identify based on the name of the entity.\n\n{OUTPUT_FORMAT}\n",
+  "clues": {
+    "osm": "You are analyzing an OpenStreetMap (OSM) map description to identify explicit mentions of economic activities.\n\nInstructions:\n- Identify labeled features, POIs, or tags that clearly indicate economic activity.\n- The keyword list below represents valid economic activity categories. Only mention an activity if there is direct evidence in the OSM data.\n- Match terms in the description only if they clearly correspond to one of the keywords below or its direct synonym.\n- When you refer to an activity, wrap it in [ ] exactly as shown in the keyword list.\n- For each activity found, also mention the specific OSM feature name, tag, or label that supports it.\n- Do not invent, infer, or guess activities not explicitly visible or stated.\n- Keep the total output under 512 tokens.\n- If no economic activity is present, output exactly: \"No economic activity clues found.\"\n- OUTPUT LANGUAGE MUST BE ENGLISH\n\nEconomic Activity Keywords:\n- [agriculture], [forestry], [fishing], [crops], [livestock], [timber]\n- [mining], [quarrying], [oil], [coal], [ores]\n- [manufacturing], [processing], [assembly], [fabrication]\n- [electricity], [gas], [steam]\n- [water], [sewerage], [waste], [remediation]\n- [construction], [building], [infrastructure]\n- [wholesale], [retail], [trade], [resale], [vehicle-repair]\n- [transport], [logistics], [freight], [storage], [postal]\n- [accommodation], [hotels], [restaurants], [catering]\n- [information], [communication], [telecom], [publishing], [IT]\n- [finance], [insurance], [banking], [investment]\n- [real-estate], [property], [leasing]\n- [professional], [scientific], [technical], [legal], [engineering], [research]\n- [administration], [support], [employment], [security], [cleaning]\n- [government], [defence], [legislation], [taxation]\n- [education], [training], [schooling]\n- [health], [social-care], [medical], [hospitals], [clinics]\n- [arts], [entertainment], [recreation], [sports], [culture]\n- [personal-services], [household-services], [memberships], [repairs]\n- [household-employment], [household-production]\n- [extraterritorial], [embassies], [diplomacy]\n\nOutput format:\nEconomic activity clues:\n- [keyword] — OSM feature/tag that supports it\n\nOSM map description:\n",
+    "satellite": "You are analyzing a satellite image description to identify explicit mentions of economic activities.\n\nInstructions:\n- Identify labeled features, POIs, or icons that clearly indicate economic activity.\n- The keyword list below represents valid economic activity categories. Only mention an activity if there is direct evidence in the description.\n- Match terms in the description only if they clearly correspond to one of the keywords below or its direct synonym.\n- When you refer to an activity, wrap it in [ ] exactly as shown in the keyword list.\n- For each activity found, also mention the specific labeled feature, POI name, or visible element that supports it.\n- Do not invent, infer, or guess activities not explicitly visible or stated.\n- Keep the total output under 512 tokens.\n- If no economic activity is present, output exactly: \"No economic activity clues found.\"\n- OUTPUT LANGUAGE MUST BE ENGLISH\n\nEconomic Activity Keywords:\n- [agriculture], [forestry], [fishing], [crops], [livestock], [timber]\n- [mining], [quarrying], [oil], [coal], [ores]\n- [manufacturing], [processing], [assembly], [fabrication]\n- [electricity], [gas], [steam]\n- [water], [sewerage], [waste], [remediation]\n- [construction], [building], [infrastructure]\n- [wholesale], [retail], [trade], [resale], [vehicle-repair]\n- [transport], [logistics], [freight], [storage], [postal]\n- [accommodation], [hotels], [restaurants], [catering]\n- [information], [communication], [telecom], [publishing], [IT]\n- [finance], [insurance], [banking], [investment]\n- [real-estate], [property], [leasing]\n- [professional], [scientific], [technical], [legal], [engineering], [research]\n- [administration], [support], [employment], [security], [cleaning]\n- [government], [defence], [legislation], [taxation]\n- [education], [training], [schooling]\n- [health], [social-care], [medical], [hospitals], [clinics]\n- [arts], [entertainment], [recreation], [sports], [culture]\n- [personal-services], [household-services], [memberships], [repairs]\n- [household-employment], [household-production]\n- [extraterritorial], [embassies], [diplomacy]\n\nOutput format:\nEconomic activity clues:\n- [keyword] — labeled feature/POI from satellite image that supports it\n\nSatellite image description:\n",
+    "wikidata": "You are analyzing a Wikidata JSON entry to identify explicit mentions of economic activities.\n\nInstructions:\n- Only consider explicitly stated fields such as \"industry\", \"product\", \"field of work\", or equivalent.\n- The keyword list below represents valid economic activity categories. Only mention an activity if there is direct evidence in the data.\n- Match terms in the entry only if they clearly correspond to one of the keywords below or its direct synonym.\n- When you refer to an activity, wrap it in [ ] exactly as shown in the keyword list.\n- For each activity found, also mention the specific entity or value from the Wikidata entry that supports it.\n- Do not invent, infer, or guess activities not explicitly stated.\n- Keep the total output under 512 tokens.\n- If no economic activity is present, output exactly: \"No economic activity clues found.\"\n- OUTPUT LANGUAGE MUST BE ENGLISH\n\nEconomic Activity Keywords:\n- [agriculture], [forestry], [fishing], [crops], [livestock], [timber]\n- [mining], [quarrying], [oil], [coal], [ores]\n- [manufacturing], [processing], [assembly], [fabrication]\n- [electricity], [gas], [steam]\n- [water], [sewerage], [waste], [remediation]\n- [construction], [building], [infrastructure]\n- [wholesale], [retail], [trade], [resale], [vehicle-repair]\n- [transport], [logistics], [freight], [storage], [postal]\n- [accommodation], [hotels], [restaurants], [catering]\n- [information], [communication], [telecom], [publishing], [IT]\n- [finance], [insurance], [banking], [investment]\n- [real-estate], [property], [leasing]\n- [professional], [scientific], [technical], [legal], [engineering], [research]\n- [administration], [support], [employment], [security], [cleaning]\n- [government], [defence], [legislation], [taxation]\n- [education], [training], [schooling]\n- [health], [social-care], [medical], [hospitals], [clinics]\n- [arts], [entertainment], [recreation], [sports], [culture]\n- [personal-services], [household-services], [memberships], [repairs]\n- [household-employment], [household-production]\n- [extraterritorial], [embassies], [diplomacy]\n\nOutput format:\nEconomic activity clues:\n- [keyword] — entity/value from Wikidata that supports it\n\nJSON:\n",
+    "wikipedia": "You are analyzing a Wikipedia article to identify explicit mentions of economic activities.\n\nInstructions:\n- Only consider explicitly stated fields such as \"industry\", \"product\", \"field of work\", or equivalent.\n- The keyword list below represents valid economic activity categories. Only mention an activity if there is direct evidence in the article.\n- Match terms in the article only if they clearly correspond to one of the keywords below or its direct synonym.\n- When you refer to an activity, wrap it in [ ] exactly as shown in the keyword list.\n- For each activity found, also mention the specific entity, phrase, or value from the article that supports it.\n- Do not invent, infer, or guess activities not explicitly stated.\n- Keep the total output under 512 tokens.\n- If no economic activity is present, output exactly: \"No economic activity clues found.\"\n- OUTPUT LANGUAGE MUST BE ENGLISH\n\nEconomic Activity Keywords:\n- [agriculture], [forestry], [fishing], [crops], [livestock], [timber]\n- [mining], [quarrying], [oil], [coal], [ores]\n- [manufacturing], [processing], [assembly], [fabrication]\n- [electricity], [gas], [steam]\n- [water], [sewerage], [waste], [remediation]\n- [construction], [building], [infrastructure]\n- [wholesale], [retail], [trade], [resale], [vehicle-repair]\n- [transport], [logistics], [freight], [storage], [postal]\n- [accommodation], [hotels], [restaurants], [catering]\n- [information], [communication], [telecom], [publishing], [IT]\n- [finance], [insurance], [banking], [investment]\n- [real-estate], [property], [leasing]\n- [professional], [scientific], [technical], [legal], [engineering], [research]\n- [administration], [support], [employment], [security], [cleaning]\n- [government], [defence], [legislation], [taxation]\n- [education], [training], [schooling]\n- [health], [social-care], [medical], [hospitals], [clinics]\n- [arts], [entertainment], [recreation], [sports], [culture]\n- [personal-services], [household-services], [memberships], [repairs]\n- [household-employment], [household-production]\n- [extraterritorial], [embassies], [diplomacy]\n\nOutput format:\nEconomic activity clues:\n- [keyword] — entity/phrase from Wikipedia that supports it\n\nWikipedia content:\n",
+    "website": "You are analyzing website content to identify explicit mentions of economic activities.\n\nInstructions:\n- Only consider explicitly stated fields such as \"industry\", \"product\", \"field of work\", or equivalent.\n- The keyword list below represents valid economic activity categories. Only mention an activity if there is direct evidence in the website content.\n- Match terms in the content only if they clearly correspond to one of the keywords below or its direct synonym.\n- When you refer to an activity, wrap it in [ ] exactly as shown in the keyword list.\n- For each activity found, also mention the specific entity, phrase, or value from the website that supports it.\n- Do not invent, infer, or guess activities not explicitly stated.\n- Keep the total output under 512 tokens.\n- If no economic activity is present, output exactly: \"No economic activity clues found.\"\n- OUTPUT LANGUAGE MUST BE ENGLISH\n\nEconomic Activity Keywords:\n- [agriculture], [forestry], [fishing], [crops], [livestock], [timber]\n- [mining], [quarrying], [oil], [coal], [ores]\n- [manufacturing], [processing], [assembly], [fabrication]\n- [electricity], [gas], [steam]\n- [water], [sewerage], [waste], [remediation]\n- [construction], [building], [infrastructure]\n- [wholesale], [retail], [trade], [resale], [vehicle-repair]\n- [transport], [logistics], [freight], [storage], [postal]\n- [accommodation], [hotels], [restaurants], [catering]\n- [information], [communication], [telecom], [publishing], [IT]\n- [finance], [insurance], [banking], [investment]\n- [real-estate], [property], [leasing]\n- [professional], [scientific], [technical], [legal], [engineering], [research]\n- [administration], [support], [employment], [security], [cleaning]\n- [government], [defence], [legislation], [taxation]\n- [education], [training], [schooling]\n- [health], [social-care], [medical], [hospitals], [clinics]\n- [arts], [entertainment], [recreation], [sports], [culture]\n- [personal-services], [household-services], [memberships], [repairs]\n- [household-employment], [household-production]\n- [extraterritorial], [embassies], [diplomacy]\n\nOutput format:\nEconomic activity clues:\n- [keyword] — entity/phrase from website that supports it\n\nWebsite content:\n"
+  },
+  "sections": [
+    {
+      "category": "A",
+      "title": "Agriculture, Forestry and Fishing",
+      "description": "This section covers the utilization of plant and animal natural resources through farming, animal husbandry, and harvesting from natural environments.",
+      "inclusion": "It includes activities such as crop cultivation, animal raising and breeding, and the collection of timber, wild plants, and animal products from farms or natural habitats.",
+      "exclusion": ""
+    },
+    {
+      "category": "B",
+      "title": "Mining and Quarrying",
+      "description": "This section includes the extraction of naturally occurring minerals in solid, liquid, or gaseous forms, using various methods such as underground mining, surface mining, and well operations, along with related preparation activities.",
+      "inclusion": "It includes activities such as crushing, grinding, drying, sorting, liquefaction of natural gas, and agglomeration of solid fuels, typically carried out by the extracting units or nearby facilities.",
+      "exclusion": "It excludes the processing of extracted materials (see Section C), use in construction without further transformation (see Section F), bottling of mineral waters (see 11.07), and treatment of certain minerals not done alongside extraction (see 23.9)."
+    },
+    {
+      "category": "C",
+      "title": "Manufacturing",
+      "description": "This section includes the physical or chemical transformation of raw materials or components into new products, typically resulting in outputs ready for use or as inputs to further manufacturing.",
+      "inclusion": "It includes activities such as substantial renovation, assembly of manufactured products, and the creation of new products from waste materials, such as silver from film waste or tyre retreading.",
+      "exclusion": "It excludes waste recovery for secondary raw materials (see Section E), logging and beneficiating of agricultural products (see Section A), ore processing (see Section B), construction activities (see Section F), and transformation activities not resulting in new products (see Section G)."
+    },
+    {
+      "category": "D",
+      "title": "Electricity, Gas, Steam and Air Conditioning Supply",
+      "description": "This section covers the provision and distribution of electricity, natural gas, steam, hot water, and air conditioning through a permanent infrastructure of networks such as lines, mains, and pipes.",
+      "inclusion": "It includes the generation, control, and distribution of electric power, gas, steam, and air conditioning, including within industrial parks and residential buildings.",
+      "exclusion": "It excludes the operation of water and sewerage utilities (see 36, 37) and the long-distance transport of gas through pipelines."
+    },
+    {
+      "category": "E",
+      "title": "Water Supply; Sewerage, Waste Management and Remediation Activities",
+      "description": "This section includes the collection, treatment, and disposal of waste and sewage, as well as the management of contaminated sites and the supply of water for various uses.",
+      "inclusion": "It includes waste management for industrial and household waste, sewage treatment, and water supply activities often conducted alongside sewage treatment.",
+      "exclusion": ""
+    },
+    {
+      "category": "F",
+      "title": "Construction",
+      "description": "This section covers general and specialised construction activities for buildings and civil engineering works, including new projects, repairs, additions, and temporary structures, whether performed directly or through subcontracting.",
+      "inclusion": "It includes the complete construction of buildings and civil engineering works, specialised construction activities as part of projects, repair of buildings, and development of construction projects for sale.",
+      "exclusion": ""
+    },
+    {
+      "category": "G",
+      "title": "Wholesale and Retail Trade; Repair of Motor Vehicles and Motorcycles",
+      "description": "This section includes the wholesale and retail sale of goods without transformation and related services, as well as the repair of motor vehicles and motorcycles.",
+      "inclusion": "It includes activities like sorting, grading, bottling, packaging, and the resale of goods to businesses or the general public, along with repair services for motor vehicles.",
+      "exclusion": ""
+    },
+    {
+      "category": "H",
+      "title": "Transportation and Storage",
+      "description": "This section includes the transport of passengers or freight by various modes, along with related services such as cargo handling, storage, and postal and courier activities.",
+      "inclusion": "It includes renting transport equipment with driver or operator and supporting transport activities like terminal operations and parking.",
+      "exclusion": "It excludes major repair of transport equipment (see 33.1), construction and repair of transport infrastructure (see 42), motor vehicle maintenance (see 45.20), and transport equipment rental without driver (see 77.1, 77.3)."
+    },
+    {
+      "category": "I",
+      "title": "Accommodation and Food Service Activities",
+      "description": "This section covers short-term accommodation services for travelers and the preparation and serving of meals and drinks for immediate consumption.",
+      "inclusion": "",
+      "exclusion": "It excludes long-term residential accommodation (see Section L) and the preparation of food or drinks not intended for immediate consumption or sold through wholesale/retail channels (see Section C)."
+    },
+    {
+      "category": "J",
+      "title": "Information and Communication",
+      "description": "This section includes the creation, publishing, and distribution of information and cultural content, telecommunications, IT services, and data processing activities.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "K",
+      "title": "Financial and Insurance Activities",
+      "description": "This section includes activities related to financial services, insurance and pension funding, and asset-holding entities such as holding companies and trusts.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "L",
+      "title": "Real Estate Activities",
+      "description": "This section includes activities related to real estate sales, rentals, management, and related services, carried out either on owned or leased property or on a contract basis.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "M",
+      "title": "Professional, Scientific and Technical Activities",
+      "description": "This section includes specialised services requiring high levels of expertise, such as legal, accounting, engineering, and scientific research services.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "N",
+      "title": "Administrative and Support Service Activities",
+      "description": "This section includes support services for general business operations that do not primarily involve the transfer of specialised knowledge, such as employment services, security, and facility management.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "O",
+      "title": "Public Administration and Defence; Compulsory Social Security",
+      "description": "This section includes government-related activities such as legislation, taxation, national defence, public order, immigration, foreign affairs, and compulsory social security administration.",
+      "inclusion": "",
+      "exclusion": "It excludes activities like teaching or healthcare, even if conducted by public entities (see Sections P and Q)."
+    },
+    {
+      "category": "P",
+      "title": "Education",
+      "description": "This section includes all levels and types of education, from preschool to higher education, including adult and special education, whether provided publicly or privately, through various formats such as in-person or online.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "Q",
+      "title": "Human Health and Social Work Activities",
+      "description": "This section includes medical care by health professionals, residential care involving health support, and social work activities without health care involvement.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "R",
+      "title": "Arts, Entertainment and Recreation",
+      "description": "This section includes cultural, artistic, entertainment, and recreational activities for the general public, including live shows, museums, gambling, sports, and leisure facilities.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "S",
+      "title": "Other Service Activities",
+      "description": "This section includes a variety of personal services not classified elsewhere, such as those provided by membership organisations and the repair of computers and household goods.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "T",
+      "title": "Activities of Households as Employers; Undifferentiated Goods- and Services-producing Activities of Households for Own Use",
+      "description": "This section includes households’ subsistence production of goods and services for their own use, when no primary activity can be identified and the output is not for market sale.",
+      "inclusion": "",
+      "exclusion": ""
+    },
+    {
+      "category": "U",
+      "title": "Activities of Extraterritorial Organisations and Bodies",
+      "description": "This section includes the activities of international organisations such as the UN, IMF, World Bank, and diplomatic missions determined by the host country location.",
+      "inclusion": "",
+      "exclusion": ""
+    }
+  ]
+}

@@ -93,3 +93,8 @@ CREATE TABLE IF NOT EXISTS classification_run_items (
     PRIMARY KEY (run_id, position)
 );
 CREATE INDEX IF NOT EXISTS classification_runs_user_created ON classification_runs (user_id, created_at DESC);
+
+ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS method text NOT NULL DEFAULT 'legacy';
+ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS prompt_config text NOT NULL DEFAULT 'Simple';
+ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS clue_prompts jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE classification_run_items ADD COLUMN IF NOT EXISTS clues jsonb NOT NULL DEFAULT '{}'::jsonb;
