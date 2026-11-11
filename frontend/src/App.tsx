@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Layers2, ArrowRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { ClassificationPage } from '@/components/classification-page'
+import { ClassificationPage } from '@/components/classification-runs-page'
 import { SettingsPage } from '@/components/settings-page'
 import { AdminPage } from '@/components/admin-page'
 import { MonetaPage } from '@/components/moneta-page'
@@ -18,7 +18,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react'
 import './App.css' 
 
 function App() {
-  const [page, setPage] = useState(() => window.location.hash === '#classification' ? 'classification' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
+  const [page, setPage] = useState(() => window.location.hash.startsWith('#classification') ? 'classification' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
   const [user, setUser] = useState<{ username: string; is_admin: boolean } | null>(null)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
@@ -32,7 +32,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const updatePage = () => setPage(window.location.hash === '#classification' ? 'classification' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
+    const updatePage = () => setPage(window.location.hash.startsWith('#classification') ? 'classification' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
     window.addEventListener('hashchange', updatePage)
     return () => window.removeEventListener('hashchange', updatePage)
   }, [])

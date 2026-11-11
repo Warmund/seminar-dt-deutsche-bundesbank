@@ -66,3 +66,30 @@ CREATE TABLE IF NOT EXISTS classification_requests (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS classification_requests_user_time ON classification_requests (user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS classification_runs (
+    id uuid PRIMARY KEY,
+    user_id bigint NOT NULL REFERENCES app_users(id),
+    name text NOT NULL,
+    model text NOT NULL,
+    prompt text NOT NULL,
+    sources jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS classification_run_items (
+    run_id uuid NOT NULL REFERENCES classification_runs(id) ON DELETE CASCADE,
+    position integer NOT NULL,
+    osm_type text NOT NULL,
+    osm_id text NOT NULL,
+    name text NOT NULL,
+    reference text NOT NULL,
+    snapshot jsonb NOT NULL,
+    state text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'running', 'done', 'error')),
+    result jsonb,
+    error text,
+    started_at timestamptz,
+    finished_at timestamptz,
+    attempt uuid,
+    PRIMARY KEY (run_id, position)
+);
+CREATE INDEX IF NOT EXISTS classification_runs_user_created ON classification_runs (user_id, created_at DESC);

@@ -75,3 +75,25 @@ Beim ersten Fehler stoppt der Durchlauf; bereits erhaltene Ergebnisse bleiben si
 Ein serverseitiges Limit erlaubt 100 Versuche pro Benutzer und Stunde.
 OpenAI wird mit `store=False` aufgerufen; dies ersetzt keine Prüfung der
 Datenaufbewahrungseinstellungen des OpenAI-Projekts.
+
+### Gespeicherte Klassifizierungsläufe
+
+„Klassifizierung“ öffnet die eigenen Läufe mit getrennten Detailseiten. Unter
+„Neuer Lauf“ werden Name, Quellen und bis zu 1.000 ausgewählte Unternehmen
+festgehalten. Das Anlegen selbst löst keine OpenAI-Anfragen aus.
+PostgreSQL speichert pro Lauf Modell-ID, vollständigen Prompt, Quellenoptionen
+und je Unternehmen Name, Referenz, begrenzte Texte sowie unveränderliche
+Object-Storage-Bildschlüssel als Momentaufnahme. Spätere Datenimporte ändern
+diese Eingaben nicht. Referenz und bisherige Ergebnisse gehen nicht an das Modell.
+Bildobjekte, auf die Läufe verweisen, müssen bei künftigen Bereinigungen erhalten bleiben.
+
+Der Start verarbeitet offene Einträge nacheinander im geöffneten Browser.
+Jedes Ergebnis inklusive Begründung, Unsicherheit, tatsächlicher Modell-ID,
+Quellenstatus und Tokenverbrauch wird sofort separat gespeichert. Ein Lauf
+ist nur für seinen Ersteller sichtbar. Beim Seitenwechsel stoppt die Schleife
+nach dem aktuellen Aufruf; es gibt noch keinen Hintergrund-Worker.
+Fertige Einträge werden beim Fortsetzen nicht erneut angefragt. Fehler und
+über fünf Minuten unterbrochene Anfragen benötigen einen ausdrücklich bestätigten
+Neuversuch, der erneut Kosten verursachen kann. Eine Sperre verhindert gleichzeitige
+API-Aufrufe innerhalb desselben Laufs. Frühere, ausschließlich im Seitenzustand
+vorhandene Ergebnisse können nicht nachträglich wiederhergestellt werden.
