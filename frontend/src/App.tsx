@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Layers2, ArrowRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { SettingsPage } from '@/components/settings-page'
 import { AdminPage } from '@/components/admin-page'
 import { MonetaPage } from '@/components/moneta-page'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -66,6 +67,7 @@ function App() {
         <SidebarInset>
           <SiteHeader title={page === 'settings' ? 'Einstellungen' : page === 'admin' ? 'Admin-Panel' : 'Moneta'} />
           {page === 'moneta' && <MonetaPage />}
+          {page === 'settings' && <SettingsPage />}
           {page === 'admin' && (user.is_admin ? <AdminPage /> : <p className="p-6">Administratorzugriff erforderlich.</p>)}
           {error && <div className="p-4"><Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert></div>}
         </SidebarInset>
