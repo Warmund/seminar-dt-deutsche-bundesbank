@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Check, FileText, FlaskConical, Layers, LoaderCircle, Map, Play, Satellite } from 'lucide-react'
+import { Check, ChevronDown, FileText, FlaskConical, Layers, LoaderCircle, Map, Play, Satellite } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -76,8 +76,14 @@ export function NewClassificationRun({ onCreated }: { onCreated: (id: string) =>
       <Card className="min-w-0"><CardHeader><CardTitle>Datenauswahl festlegen</CardTitle><CardDescription>{data.total} Datenpunkte insgesamt · {available} passen zu den gewählten Klassen</CardDescription></CardHeader><CardContent className="flex flex-col gap-6">
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
         <FieldGroup><Field><FieldLabel htmlFor="dataset-count">Anzahl der Datenpunkte insgesamt</FieldLabel><Input id="dataset-count" className="max-w-48" type="number" min={1} max={Math.min(1000, available)} step={1} value={count} disabled={saving || loading} aria-invalid={!loading && !validSelection} onChange={e => setCount(e.target.value)} /><p className="text-sm text-muted-foreground">Insgesamt über alle gewählten Klassen, maximal {Math.min(1000, available)} Datenpunkte.</p></Field>
-        <Field><div className="flex flex-wrap items-center justify-between gap-2"><FieldLabel>NACE-Klassen</FieldLabel><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={saving || loading} onClick={() => setClasses(allClasses)}>Alle wählen</Button><Button size="sm" variant="ghost" disabled={saving || loading} onClick={() => setClasses([])}>Auswahl leeren</Button></div></div>
-        {loading ? <p role="status">Klassen werden geladen …</p> : <FieldGroup className="grid gap-3 sm:grid-cols-2">{data.classes.map(item => <Field key={item.category} orientation="horizontal" className="items-start rounded-lg border p-3"><Checkbox id={`class-${item.category}`} disabled={saving || !item.count} checked={classes.includes(item.category)} onCheckedChange={checked => setClasses(previous => checked ? [...previous, item.category] : previous.filter(value => value !== item.category))} /><div className="min-w-0 flex-1"><FieldLabel htmlFor={`class-${item.category}`}>{item.category} · {item.title}</FieldLabel><p className="mt-1 text-xs text-muted-foreground">{item.count} Datenpunkte</p></div></Field>)}</FieldGroup>}</Field></FieldGroup>
+        <Field><FieldLabel htmlFor="dataset-classes">NACE-Klassen</FieldLabel>
+          <DropdownMenu><DropdownMenuTrigger asChild><Button id="dataset-classes" variant="outline" className="w-full justify-between sm:max-w-sm" disabled={saving || loading}><span className="truncate">{loading ? 'Klassen werden geladen …' : classes.length === allClasses.length ? 'Alle Klassen' : !classes.length ? 'Klassen auswählen' : classes.length <= 4 ? classes.slice().sort().join(', ') : `${classes.length} Klassen ausgewählt`}</span><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-80 w-[min(28rem,calc(100vw-2rem))] overflow-y-auto">
+              <DropdownMenuGroup><DropdownMenuItem onSelect={event => { event.preventDefault(); setClasses(allClasses) }}>Alle Klassen wählen</DropdownMenuItem><DropdownMenuItem onSelect={event => { event.preventDefault(); setClasses([]) }}>Auswahl leeren</DropdownMenuItem></DropdownMenuGroup><DropdownMenuSeparator />
+              <DropdownMenuGroup>{data.classes.map(item => <DropdownMenuCheckboxItem key={item.category} checked={classes.includes(item.category)} disabled={!item.count} onSelect={event => event.preventDefault()} onCheckedChange={checked => setClasses(previous => checked ? [...previous, item.category] : previous.filter(value => value !== item.category))}><span className="min-w-0 flex-1 whitespace-normal">{item.category} · {item.title}</span><span className="ml-3 text-xs text-muted-foreground tabular-nums">{item.count}</span></DropdownMenuCheckboxItem>)}</DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu><p className="text-sm text-muted-foreground">{available} passende Datenpunkte{classes.length > 0 && classes.length < allClasses.length ? ` · Klassen ${classes.slice().sort().join(', ')}` : ''}</p>
+        </Field></FieldGroup>
         <div className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">Die Auswahl erfolgt automatisch aus den passenden Klassen in fester OSM-Reihenfolge. Die Anzahl gilt insgesamt, ohne feste Quote je Klasse. Filter und konkrete Datenpunkte werden beim Anlegen im Lauf gespeichert.</div>
       </CardContent></Card>
       <Card><CardHeader><CardTitle>Durchlauf konfigurieren</CardTitle><CardDescription>Wähle die Quellen für die Klassifizierung.</CardDescription></CardHeader><CardContent className="flex flex-col gap-5">
