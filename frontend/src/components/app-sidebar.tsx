@@ -1,5 +1,5 @@
 import type * as React from "react"
-import { CommandIcon, LayoutDashboardIcon, FolderIcon, LogOutIcon, Settings2Icon, UserRoundIcon } from "lucide-react"
+import { CommandIcon, FolderIcon, LogOutIcon, Settings2Icon, UserRoundIcon } from "lucide-react"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -14,14 +14,11 @@ export function AppSidebar({ username, page, onLogout, ...props }: React.Compone
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
         <SidebarMenu><SidebarMenuItem><SidebarMenuButton asChild size="lg">
-          <a href="#dashboard"><CommandIcon /><span className="font-semibold">WZ-Validierung</span></a>
+          <a href="#moneta"><CommandIcon /><span className="font-semibold">WZ-Validierung</span></a>
         </SidebarMenuButton></SidebarMenuItem></SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup><SidebarGroupContent><SidebarMenu>
-          <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'dashboard'}>
-            <a href="#dashboard"><LayoutDashboardIcon /><span>Dashboard</span></a>
-          </SidebarMenuButton></SidebarMenuItem>
           <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'moneta'}>
             <a href="#moneta"><FolderIcon /><span>Moneta</span></a>
           </SidebarMenuButton></SidebarMenuItem>
