@@ -51,3 +51,27 @@ Die vorbereitete Object-Storage-Anbindung benötigt im Backend `AWS_ENDPOINT_URL
 Reihenfolge: privaten Bucket und Zugangsdaten einrichten, `schema.sql` anwenden, Backend mit Storage-Konfiguration veröffentlichen, dann `python migrate_images.py` mit derselben Datenbank- und Storage-Konfiguration ausführen. Die Migration überträgt jeweils ein bestehendes Bild, lädt es zur SHA-256-Prüfung zurück und ersetzt erst nach erfolgreicher Prüfung die BYTEA-Daten durch den Objektschlüssel. Fortschritt wird pro Bild gespeichert; ein abgebrochener Lauf kann erneut gestartet werden. Fehlschläge lassen die ursprünglichen Daten erhalten. Neue Uploads ohne Storage-Konfiguration werden mit 503 abgewiesen. Nicht mehr verwendete Objekte nach Bildersetzungen werden vorerst nicht automatisch gelöscht.
 
 Der Bildspeicher liegt im separaten Neon-Free-Projekt `moneta-images` (`lingering-lab-78352541`, Region Frankfurt), Branch `main` (`br-purple-bird-ba8fr0cb`), privater Bucket `moneta-images`. Die über Vercel verwaltete PostgreSQL-Datenbank bleibt im bisherigen Projekt. Beide Dienste werden ausschließlich serverseitig verbunden.
+
+### OpenAI-Klassifizierung
+
+Lokaler Schlüssel in `.env` im Projekt-Hauptordner (siehe `.env.example`):
+`OPENAI_API_KEY` und optional `OPENAI_MODEL` (Standard: `gpt-6-luna`).
+Die Datei ist von Git ausgeschlossen und wird nur vom Backend geladen.
+Auf Vercel dieselben Variablen im **Backend-Projekt** setzen, den Key als Secret;
+anschließend das Backend neu deployen. Niemals `VITE_` für den Key verwenden.
+
+Auf „Klassifizierung“ Unternehmen und Quellen auswählen und kostenpflichtig starten.
+Pro Unternehmen erfolgt ein Responses-Aufruf ohne automatische Wiederholung,
+mit höchstens 24.000 Zeichen aus einer begrenzten Auswahl an OSM-Tags und
+angereicherten Texten sowie optional den vorhandenen Karten-/Satellitenbildern.
+Referenzklasse und Importhistorie werden nicht an das Modell übermittelt.
+Die Ausgabe verwendet das NACE-Abschnittsschema A–U des MONETA-Repositories
+oder `UNK` bei fehlenden Belegen. Dies ist keine detaillierte WZ-Klassifikation.
+`nace_sections.json` übernimmt die Abschnittsbezeichnungen aus MONETA (`constants.py`, MIT).
+Begründung und Unsicherheiten sind Modellangaben, keine kalibrierte Konfidenz.
+Ergebnisse bleiben aktuell im Seitenzustand und werden nicht dauerhaft gespeichert.
+Beim ersten Fehler stoppt der Durchlauf; bereits erhaltene Ergebnisse bleiben sichtbar.
+„Stoppen“ beendet den Durchlauf nach dem aktuellen API-Aufruf.
+Ein serverseitiges Limit erlaubt 100 Versuche pro Benutzer und Stunde.
+OpenAI wird mit `store=False` aufgerufen; dies ersetzt keine Prüfung der
+Datenaufbewahrungseinstellungen des OpenAI-Projekts.

@@ -1,4 +1,9 @@
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 from typing import Annotated, Any
 
 import psycopg
@@ -85,3 +90,5 @@ def create_decision(case_id: int, decision: DecisionIn, connection: Connection):
 
 
 import moneta_api  # noqa: E402
+
+import classification_api  # noqa: E402
