@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS app_users (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username text UNIQUE NOT NULL,
     password_hash text NOT NULL,
-    active boolean NOT NULL DEFAULT true
+    active boolean NOT NULL DEFAULT true,
+    is_admin boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -56,3 +57,5 @@ CREATE TABLE IF NOT EXISTS moneta_images (
 
 ALTER TABLE moneta_images ADD COLUMN IF NOT EXISTS object_key text;
 ALTER TABLE moneta_images ALTER COLUMN content DROP NOT NULL;
+
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false;

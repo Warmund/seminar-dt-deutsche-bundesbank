@@ -2,6 +2,8 @@ import hashlib
 import os
 import secrets
 
+import psycopg
+
 from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from pwdlib import PasswordHash
@@ -28,7 +30,7 @@ def current_user(request: Request, connection: Connection):
     if len(token) > 128:
         raise HTTPException(status_code=401, detail='Bitte anmelden')
     user = connection.execute(
-        'SELECT u.id, u.username FROM auth_sessions s JOIN app_users u ON u.id = s.user_id '
+        'SELECT u.id, u.username, u.is_admin FROM auth_sessions s JOIN app_users u ON u.id = s.user_id '
         'WHERE s.token_hash = %s AND s.expires_at > now() AND u.active', (token_hash(token),)
     ).fetchone()
     if not user:
@@ -66,12 +68,12 @@ def login(data: Login, request: Request, response: Response, connection: Connect
     token = secrets.token_urlsafe(32)
     connection.execute("INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (%s, %s, now() + interval '8 hours')", (token_hash(token), user['id']))
     response.set_cookie(COOKIE, token, max_age=28800, httponly=True, secure=os.environ.get('COOKIE_SECURE', 'false').lower() == 'true', samesite='strict', path='/')
-    return {'username': user['username']}
+    return {'username': user['username'], 'is_admin': user['is_admin']}
 
 
 @app.get('/api/auth/me')
 def me(user=Depends(current_user)):
-    return {'username': user['username']}
+    return {'username': user['username'], 'is_admin': user['is_admin']}
 
 
 @app.post('/api/auth/logout', dependencies=[Depends(origin_check)])
@@ -79,3 +81,27 @@ def logout(request: Request, response: Response, connection: Connection, user=De
     connection.execute('DELETE FROM auth_sessions WHERE token_hash = %s', (token_hash(request.cookies[COOKIE]),))
     response.delete_cookie(COOKIE, path='/', httponly=True, samesite='strict', secure=os.environ.get('COOKIE_SECURE', 'false').lower() == 'true')
     return {'ok': True}
+
+
+def admin_user(user=Depends(current_user)):
+    if not user['is_admin']:
+        raise HTTPException(status_code=403, detail='Administratorzugriff erforderlich')
+    return user
+
+
+class NewUser(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
+    username: str = Field(min_length=1, max_length=150, pattern=r'^\S+$')
+    password: str = Field(min_length=12, max_length=1024)
+
+
+@app.post('/api/admin/users', status_code=201, dependencies=[Depends(origin_check), Depends(admin_user)])
+def create_user(data: NewUser, connection: Connection):
+    try:
+        user = connection.execute(
+            'INSERT INTO app_users (username, password_hash) VALUES (%s, %s) RETURNING username',
+            (data.username, passwords.hash(data.password)),
+        ).fetchone()
+    except psycopg.errors.UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail='Dieser Benutzername ist bereits vergeben') from exc
+    return {'username': user['username']}

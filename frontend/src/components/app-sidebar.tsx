@@ -1,12 +1,13 @@
 import type * as React from "react"
-import { CommandIcon, FolderIcon, LogOutIcon, Settings2Icon, UserRoundIcon } from "lucide-react"
+import { CommandIcon, FolderIcon, LogOutIcon, Settings2Icon, UserRoundIcon, ShieldCheckIcon } from "lucide-react"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-export function AppSidebar({ username, page, onLogout, ...props }: React.ComponentProps<typeof Sidebar> & {
+export function AppSidebar({ username, isAdmin, page, onLogout, ...props }: React.ComponentProps<typeof Sidebar> & {
   username: string
+  isAdmin: boolean
   page: string
   onLogout: () => void
 }) {
@@ -25,6 +26,7 @@ export function AppSidebar({ username, page, onLogout, ...props }: React.Compone
         </SidebarMenu></SidebarGroupContent></SidebarGroup>
       </SidebarContent>
       <SidebarFooter><SidebarMenu>
+        {isAdmin && <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'admin'}><a href="#admin"><ShieldCheckIcon /><span>Admin-Panel</span></a></SidebarMenuButton></SidebarMenuItem>}
         <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'settings'}>
           <a href="#settings"><Settings2Icon /><span>Einstellungen</span></a>
         </SidebarMenuButton></SidebarMenuItem>
