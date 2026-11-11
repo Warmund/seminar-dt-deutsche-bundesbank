@@ -4,12 +4,12 @@ import uuid
 from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from psycopg.types.json import Jsonb
 
 from main import app, Connection
 from auth import current_user, origin_check
-from moneta_pipeline import build_prompts, source_texts, next_step
+from moneta_pipeline import build_prompts, source_texts, next_step, ASSETS
 from classification_api import ClassificationInput, Sources, execute_classification
 
 
@@ -19,13 +19,32 @@ class RecordKey(BaseModel):
     osm_id: int = Field(gt=0, le=9223372036854775807)
 
 
+class DatasetSelection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    count: int = Field(ge=1, le=1000, strict=True)
+    classes: list[Annotated[str, Field(pattern='^[A-U]$')]] = Field(min_length=1, max_length=21)
+
+    @model_validator(mode='after')
+    def unique_classes(self):
+        if len(set(self.classes)) != len(self.classes):
+            raise ValueError('Klassen dürfen nicht doppelt ausgewählt werden.')
+        return self
+
+
 class NewRun(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
     method: Literal['zero_shot', 'multi_turn'] = 'zero_shot'
     prompt_config: Literal['Simple', 'Extended'] = 'Simple'
     name: str = Field(min_length=1, max_length=150)
     sources: Sources
-    items: list[RecordKey] = Field(min_length=1, max_length=1000)
+    selection: DatasetSelection | None = None
+    items: list[RecordKey] | None = Field(default=None, min_length=1, max_length=1000)
+
+    @model_validator(mode='after')
+    def one_selection(self):
+        if (self.selection is None) == (self.items is None):
+            raise ValueError('Genau eine Datenauswahl ist erforderlich.')
+        return self
 
 
 def owned_run(connection, run_id, user):
@@ -35,33 +54,56 @@ def owned_run(connection, run_id, user):
     return row
 
 
+@app.get('/api/classification/dataset', dependencies=[Depends(current_user)])
+def dataset(connection: Connection):
+    rows = connection.execute('SELECT category,count(*) AS count FROM moneta_records GROUP BY category').fetchall()
+    counts = {row['category']:row['count'] for row in rows}
+    return {'total':sum(counts.values()), 'classes':[{'category':entry['category'],'title':entry['title'],'count':counts.get(entry['category'],0)} for entry in ASSETS['sections']]}
+
+
 @app.post('/api/classification/runs', status_code=201, dependencies=[Depends(origin_check)])
 def create_run(data: NewRun, connection: Connection, user=Depends(current_user)):
     if data.method == 'multi_turn' and not all(data.sources.model_dump().values()):
         raise HTTPException(422, 'Multi-Turn verwendet alle verfügbaren Quellen wie MONETA.')
-    keys = {(item.osm_type, item.osm_id) for item in data.items}
-    if len(keys) != len(data.items):
-        raise HTTPException(422, 'Doppelte Unternehmen in der Auswahl.')
+    if data.selection:
+        rows = connection.execute('SELECT osm_type,osm_id,name,category,data FROM moneta_records WHERE category = ANY(%s) ORDER BY osm_type,osm_id LIMIT %s',
+                                  (data.selection.classes,data.selection.count)).fetchall()
+        if len(rows) != data.selection.count:
+            raise HTTPException(422, f'Für die gewählten Klassen sind nur {len(rows)} Datenpunkte verfügbar. Bitte die Anzahl reduzieren.')
+        criteria = {**data.selection.model_dump(), 'order':'osm_type,osm_id'}
+    else:
+        keys = {(item.osm_type,item.osm_id) for item in data.items}
+        if len(keys) != len(data.items):
+            raise HTTPException(422,'Doppelte Unternehmen in der Auswahl.')
+        rows = []
+        for item in data.items:
+            row = connection.execute('SELECT osm_type,osm_id,name,category,data FROM moneta_records WHERE osm_type=%s AND osm_id=%s',(item.osm_type,item.osm_id)).fetchone()
+            if not row:
+                raise HTTPException(422,'Ein ausgewähltes Unternehmen ist nicht mehr vorhanden.')
+            rows.append(row)
+        criteria = {}
     run_id = uuid.uuid4()
     prompt, clue_prompts = build_prompts(data.method,data.prompt_config,data.sources.model_dump())
-    connection.execute('INSERT INTO classification_runs (id,user_id,name,model,prompt,sources,method,prompt_config,clue_prompts) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-                       (run_id,user['id'],data.name,os.environ.get('OPENAI_MODEL','gpt-6-luna'),prompt,Jsonb(data.sources.model_dump()),data.method,data.prompt_config,Jsonb(clue_prompts)))
-    for position, item in enumerate(data.items):
-        row = connection.execute('SELECT name, category, data FROM moneta_records WHERE osm_type=%s AND osm_id=%s', (item.osm_type,item.osm_id)).fetchone()
-        if not row:
-            raise HTTPException(422, 'Ein ausgewähltes Unternehmen ist nicht mehr vorhanden.')
-        texts = source_texts(row['data']) if data.sources.text else {}
-        images = {}
-        for kind in ('osm','satellite'):
-            if getattr(data.sources,kind):
-                image = connection.execute('SELECT object_key FROM moneta_images WHERE osm_type=%s AND osm_id=%s AND kind=%s', (item.osm_type,item.osm_id,kind)).fetchone()
-                if image:
-                    if not image['object_key']:
-                        raise HTTPException(409, 'Bitte zuerst die alten Datenbankbilder in den Object Storage migrieren.')
-                    images[kind] = {'object_key':image['object_key']}
-        snapshot = {'texts':texts, 'images':images}
-        connection.execute('INSERT INTO classification_run_items (run_id,position,osm_type,osm_id,name,reference,snapshot) VALUES (%s,%s,%s,%s,%s,%s,%s)',
-                           (run_id,position,item.osm_type,str(item.osm_id),row['name'],row['category'],Jsonb(snapshot)))
+    connection.execute('INSERT INTO classification_runs (id,user_id,name,model,prompt,sources,method,prompt_config,clue_prompts,selection) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                       (run_id,user['id'],data.name,os.environ.get('OPENAI_MODEL','gpt-6-luna'),prompt,Jsonb(data.sources.model_dump()),data.method,data.prompt_config,Jsonb(clue_prompts),Jsonb(criteria)))
+    kinds = [kind for kind in ('osm','satellite') if getattr(data.sources,kind)]
+    images_by_record = {}
+    if kinds:
+        images = connection.execute(
+            'SELECT osm_type,osm_id,kind,object_key FROM moneta_images WHERE kind = ANY(%s) '
+            'AND (osm_type,osm_id) IN (SELECT * FROM unnest(%s::text[],%s::bigint[]))',
+            (kinds,[row['osm_type'] for row in rows],[row['osm_id'] for row in rows])).fetchall()
+        for image in images:
+            if not image['object_key']:
+                raise HTTPException(409,'Bitte zuerst die alten Datenbankbilder in den Object Storage migrieren.')
+            images_by_record.setdefault((image['osm_type'],image['osm_id']),{})[image['kind']] = {'object_key':image['object_key']}
+    inserts = []
+    for position, row in enumerate(rows):
+        snapshot = {'texts':source_texts(row['data']) if data.sources.text else {},
+                    'images':images_by_record.get((row['osm_type'],row['osm_id']),{})}
+        inserts.append((run_id,position,row['osm_type'],str(row['osm_id']),row['name'],row['category'],Jsonb(snapshot)))
+    with connection.cursor() as cursor:
+        cursor.executemany('INSERT INTO classification_run_items (run_id,position,osm_type,osm_id,name,reference,snapshot) VALUES (%s,%s,%s,%s,%s,%s,%s)',inserts)
     return {'id':str(run_id)}
 
 

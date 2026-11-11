@@ -131,6 +131,25 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         monkeypatch.setattr(runs,'execute_classification',classify)
         assert client.post(f'/api/classification/runs/{legacy}/items/0').status_code == 200
         assert calls[-1]['row']['input_features']['website']=='legacy text'
+        with connect() as c:
+            c.execute("INSERT INTO moneta_records (osm_type,osm_id,name,category,data) VALUES ('way',2,'B1','B','{}'),('way',3,'C1','C','{}'),('node',4,'B2','B','{}')")
+        dataset=client.get('/api/classification/dataset').json()
+        assert dataset['total']==4
+        assert next(entry['count'] for entry in dataset['classes'] if entry['category']=='B')==2
+        filtered={k:v for k,v in data.items() if k!='items'} | {'selection':{'count':3,'classes':['B','C']}}
+        created=client.post('/api/classification/runs',json=filtered)
+        assert created.status_code==201,created.text
+        filtered_id=created.json()['id']
+        frozen=client.get(f'/api/classification/runs/{filtered_id}').json()
+        assert len(frozen['items'])==3 and {item['reference'] for item in frozen['items']}=={'B','C'}
+        assert frozen['selection']['classes']==['B','C'] and frozen['selection']['count']==3
+        assert [item['osm_id'] for item in frozen['items']]==['4','2','3']
+        for selection in [{'count':4,'classes':['B','C']},{'count':1,'classes':[]},{'count':1,'classes':['Z']},{'count':True,'classes':['B']},{'count':1,'classes':['B','B']},{'count':1001,'classes':['B']}]:
+            assert client.post('/api/classification/runs',json=filtered | {'selection':selection}).status_code==422
+        assert client.post('/api/classification/runs',json=filtered | {'items':data['items']}).status_code==422
+        with connect() as c:
+            c.execute("UPDATE moneta_records SET category='A' WHERE osm_id IN (2,3,4)")
+        assert {item['reference'] for item in client.get(f'/api/classification/runs/{filtered_id}').json()['items']}=={'B','C'}
         who['id'] = 2
         assert client.get(f'/api/classification/runs/{first}').status_code == 404
         assert client.post(path).status_code == 404

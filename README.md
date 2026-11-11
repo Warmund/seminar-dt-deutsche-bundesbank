@@ -128,3 +128,15 @@ sieht ausschließlich Hinweise und Name, keine Originaltexte, Bilder oder Refere
 Die Ergebnisdetails zeigen Hinweise und getrennte Tokenzahlen für Hinweisanalysen
 und Schlussklassifizierung. Das Stundenlimit zählt jeden einzelnen Modellaufruf.
 Bestehende Läufe behalten ihr bisheriges Verfahren (`legacy`), Prompts und Eingaben.
+
+### Auswahl nach Anzahl und Klassen
+
+Neue Läufe wählen Datenpunkte über eine Gesamtanzahl (1–1.000) und einen
+Mehrfachfilter für NACE-Abschnitte A–U. Die Oberfläche zeigt die aktuelle
+Verfügbarkeit je Klasse. Die Anzahl gilt insgesamt, nicht je Klasse;
+es erfolgt keine Quotierung oder Zufallsstichprobe. Das Backend wählt passende
+Datensätze stabil nach OSM-Typ und numerischer OSM-ID. Bei zu wenigen Treffern
+wird der Lauf nicht angelegt. Kriterien und konkrete Eingaben werden gemeinsam
+im Lauf gespeichert. Klassenfilter werden nicht an das Modell übermittelt.
+Die Bildverweise werden gebündelt gelesen und Einträge gesammelt geschrieben,
+damit auch größere Auswahlen ohne einzelne Browseranfragen angelegt werden.

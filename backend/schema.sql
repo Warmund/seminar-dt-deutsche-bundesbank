@@ -98,3 +98,5 @@ ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS method text NOT NULL DE
 ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS prompt_config text NOT NULL DEFAULT 'Simple';
 ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS clue_prompts jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE classification_run_items ADD COLUMN IF NOT EXISTS clues jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS selection jsonb NOT NULL DEFAULT '{}'::jsonb;
