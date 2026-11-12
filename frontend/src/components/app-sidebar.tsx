@@ -34,7 +34,7 @@ export function AppSidebar({ username, isAdmin, page, onLogout, ...props }: Reac
         <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'settings'}>
           <a href="#settings"><Settings2Icon /><span>Einstellungen</span></a>
         </SidebarMenuButton></SidebarMenuItem>
-        <SidebarMenuItem><div className="flex items-center gap-2 px-2 py-2 text-sm"><UserRoundIcon className="size-4" /><span className="truncate">{username}</span></div></SidebarMenuItem>
+        <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'profile'}><a href="#profile"><UserRoundIcon /><span className="truncate">Profil · {username}</span></a></SidebarMenuButton></SidebarMenuItem>
         <SidebarMenuItem><SidebarMenuButton onClick={onLogout}><LogOutIcon /><span>Abmelden</span></SidebarMenuButton></SidebarMenuItem>
       </SidebarMenu></SidebarFooter>
     </Sidebar>

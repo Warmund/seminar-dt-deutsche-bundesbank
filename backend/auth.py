@@ -105,3 +105,50 @@ def create_user(data: NewUser, connection: Connection):
     except psycopg.errors.UniqueViolation as exc:
         raise HTTPException(status_code=409, detail='Dieser Benutzername ist bereits vergeben') from exc
     return {'username': user['username']}
+
+
+@app.get('/api/admin/users', dependencies=[Depends(admin_user)])
+def list_users(connection: Connection):
+    return connection.execute('SELECT id, username, active, is_admin FROM app_users ORDER BY lower(username), id').fetchall()
+
+
+class UserRights(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    is_admin: bool
+    active: bool
+
+
+@app.patch('/api/admin/users/{user_id}', dependencies=[Depends(origin_check)])
+def update_user(user_id: int, data: UserRights, connection: Connection, actor=Depends(admin_user)):
+    # Serialize rights changes and recheck access after waiting for another administrator.
+    connection.execute('LOCK TABLE app_users IN SHARE ROW EXCLUSIVE MODE')
+    current = connection.execute('SELECT active, is_admin FROM app_users WHERE id = %s', (actor['id'],)).fetchone()
+    if not current or not current['active'] or not current['is_admin']:
+        raise HTTPException(status_code=403, detail='Administratorzugriff erforderlich')
+    if user_id == actor['id'] and (not data.active or not data.is_admin):
+        raise HTTPException(status_code=400, detail='Das eigene Administratorkonto kann hier nicht gesperrt oder herabgestuft werden.')
+    user = connection.execute(
+        'UPDATE app_users SET is_admin = %s, active = %s WHERE id = %s RETURNING id, username, active, is_admin',
+        (data.is_admin, data.active, user_id),
+    ).fetchone()
+    if not user:
+        raise HTTPException(status_code=404, detail='Benutzer nicht gefunden')
+    if not data.active:
+        connection.execute('DELETE FROM auth_sessions WHERE user_id = %s', (user_id,))
+    return user
+
+
+class PasswordChange(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=1024)
+
+
+@app.post('/api/auth/password', dependencies=[Depends(origin_check)])
+def change_password(data: PasswordChange, request: Request, connection: Connection, user=Depends(current_user)):
+    stored = connection.execute('SELECT password_hash FROM app_users WHERE id = %s FOR UPDATE', (user['id'],)).fetchone()
+    if not passwords.verify(data.current_password, stored['password_hash']):
+        raise HTTPException(status_code=400, detail='Das aktuelle Passwort ist falsch.')
+    connection.execute('UPDATE app_users SET password_hash = %s WHERE id = %s', (passwords.hash(data.new_password), user['id']))
+    connection.execute('DELETE FROM auth_sessions WHERE user_id = %s AND token_hash <> %s', (user['id'], token_hash(request.cookies[COOKIE])))
+    return {'ok': True}
