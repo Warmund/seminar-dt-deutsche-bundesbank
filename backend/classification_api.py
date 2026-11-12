@@ -136,7 +136,6 @@ def execute_classification(data, connection, user, row=None, images=None, model=
 def model_call(connection, user, model, prompt, content, clue=False):
     if not os.environ.get('OPENAI_API_KEY'):
         raise HTTPException(503, 'OpenAI-Key ist im Backend noch nicht konfiguriert.')
-    reserve_request(connection,user)
     try:
         with OpenAI(timeout=90, max_retries=0) as client:
             options = dict(
@@ -167,13 +166,3 @@ def model_call(connection, user, model, prompt, content, clue=False):
         raise HTTPException(502, 'OpenAI-Anfrage fehlgeschlagen. Bitte Modell und Backend-Konfiguration prüfen.') from None
 
     return response, prediction
-
-
-def reserve_request(connection,user):
-    # Serialize reservations per user, so parallel requests cannot bypass the hourly limit.
-    connection.execute('SELECT pg_advisory_xact_lock(%s)', (user['id'],))
-    count = connection.execute("SELECT count(*) AS n FROM classification_requests WHERE user_id=%s AND created_at > now() - interval '1 hour'", (user['id'],)).fetchone()['n']
-    if count >= 100:
-        raise HTTPException(429, 'Maximal 100 Klassifizierungsanfragen pro Stunde. Bitte später erneut versuchen.')
-    connection.execute('INSERT INTO classification_requests (user_id) VALUES (%s)', (user['id'],))
-    connection.commit()

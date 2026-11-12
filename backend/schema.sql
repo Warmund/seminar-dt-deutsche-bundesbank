@@ -60,13 +60,6 @@ ALTER TABLE moneta_images ALTER COLUMN content DROP NOT NULL;
 
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false;
 
-CREATE TABLE IF NOT EXISTS classification_requests (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id bigint NOT NULL REFERENCES app_users(id),
-    created_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS classification_requests_user_time ON classification_requests (user_id, created_at);
-
 CREATE TABLE IF NOT EXISTS classification_runs (
     id uuid PRIMARY KEY,
     user_id bigint NOT NULL REFERENCES app_users(id),

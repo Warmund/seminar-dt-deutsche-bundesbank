@@ -11,7 +11,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from classification_api import Prediction, reserve_request
+from classification_api import Prediction
 from moneta_pipeline import ASSETS, MODALITIES
 import image_storage
 
@@ -97,7 +97,6 @@ def classify_jev(run,item,connection,user):
     headers = {'Authorization':'Bearer '+key}
     if assets:
         headers['TypeSafe-Danger-Zone-Images'] = 'true'
-    reserve_request(connection,user)
     try:
         with httpx.Client(timeout=90) as client:
             response = gateway_post(connection,client,headers,payload) if is_decider else client.post(ENDPOINT,headers=headers,json=payload)

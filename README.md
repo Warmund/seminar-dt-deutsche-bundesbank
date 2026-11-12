@@ -74,7 +74,6 @@ Begründung und Unsicherheiten sind Modellangaben, keine kalibrierte Konfidenz.
 Ergebnisse bleiben aktuell im Seitenzustand und werden nicht dauerhaft gespeichert.
 Beim ersten Fehler stoppt der Durchlauf; bereits erhaltene Ergebnisse bleiben sichtbar.
 „Stoppen“ beendet den Durchlauf nach dem aktuellen API-Aufruf.
-Ein serverseitiges Limit erlaubt 100 Versuche pro Benutzer und Stunde.
 OpenAI wird mit `store=False` aufgerufen; dies ersetzt keine Prüfung der
 Datenaufbewahrungseinstellungen des OpenAI-Projekts.
 
@@ -128,7 +127,7 @@ Hinweise werden nicht zwischen unabhängigen Läufen geteilt. Nach einem Fehler
 wird nur der fehlgeschlagene Schritt ausdrücklich wiederholt. Der Schlussaufruf
 sieht ausschließlich Hinweise und Name, keine Originaltexte, Bilder oder Referenz.
 Die Ergebnisdetails zeigen Hinweise und getrennte Tokenzahlen für Hinweisanalysen
-und Schlussklassifizierung. Das Stundenlimit zählt jeden einzelnen Modellaufruf.
+und Schlussklassifizierung.
 Bestehende Läufe behalten ihr bisheriges Verfahren (`legacy`), Prompts und Eingaben.
 
 ### Auswahl nach Anzahl und Klassen

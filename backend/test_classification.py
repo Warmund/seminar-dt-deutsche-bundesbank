@@ -76,7 +76,6 @@ def test_verbalized_confidence_schema_and_legacy_compatibility(monkeypatch):
             return SimpleNamespace(status='completed', output_parsed=api.Prediction(category='G', explanation='', evidence=[], uncertainty=''), model='test', usage=None)
     monkeypatch.setattr(api, 'OpenAI', FakeClient)
     monkeypatch.setenv('OPENAI_API_KEY', 'test-only')
-    monkeypatch.setattr(api, 'reserve_request', lambda connection, user: None)
     api.model_call(None, {'id': 1}, 'test', 'old prompt', [])
     api.model_call(None, {'id': 1}, 'test', 'VERBALIZED_CONFIDENCE_V1', [])
     assert formats == [api.Prediction, api.ConfidencePrediction]
@@ -97,7 +96,6 @@ def test_openai_429_distinguishes_credit_and_rate_limits(monkeypatch):
             response = httpx.Response(429, request=httpx.Request('POST', 'https://api.openai.com/v1/responses'))
             raise RateLimitError('rate limited', response=response, body={'code': code})
     monkeypatch.setattr(api, 'OpenAI', FakeClient)
-    monkeypatch.setattr(api, 'reserve_request', lambda *args: None)
     monkeypatch.setenv('OPENAI_API_KEY', 'test-only')
     with pytest.raises(HTTPException) as error:
         api.model_call(None, {'id': 1}, 'gpt-5-mini', '', [])
@@ -106,3 +104,19 @@ def test_openai_429_distinguishes_credit_and_rate_limits(monkeypatch):
     with pytest.raises(HTTPException) as error:
         api.model_call(None, {'id': 1}, 'gpt-5-mini', '', [])
     assert 'Anfragelimit' in error.value.detail and 'Guthaben' not in error.value.detail
+
+
+def test_no_application_hourly_limit_on_model_calls(monkeypatch):
+    calls = []
+    class FakeClient:
+        def __init__(self, **kwargs): self.responses = self
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def parse(self, **kwargs):
+            calls.append(kwargs['model'])
+            return SimpleNamespace(status='completed', output_parsed=api.Prediction(category='G', explanation='', evidence=[], uncertainty=''))
+    monkeypatch.setattr(api, 'OpenAI', FakeClient)
+    monkeypatch.setenv('OPENAI_API_KEY', 'test-only')
+    for _ in range(101):
+        api.model_call(None, {'id': 1}, 'gpt-5-mini', '', [])
+    assert len(calls) == 101

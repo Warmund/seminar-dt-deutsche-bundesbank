@@ -9,7 +9,6 @@ import jev_api as jev
 
 def test_jev_payload_and_probability_result(monkeypatch):
     monkeypatch.setenv('OPENCODE_API_KEY','test-only')
-    monkeypatch.setattr(jev,'reserve_request',lambda *args: None)
     monkeypatch.setattr(jev,'gateway_post',lambda *args: pytest.fail('OpenCode must not use the Vercel pause'))
     monkeypatch.setattr(jev.image_storage,'configured',lambda: True)
     class Storage:
@@ -53,7 +52,6 @@ def test_invalid_probabilities_rejected():
 def test_jev_new_and_legacy_frozen_choices(monkeypatch):
     from fastapi import HTTPException
     monkeypatch.setenv('OPENCODE_API_KEY', 'test-only')
-    monkeypatch.setattr(jev, 'reserve_request', lambda *args: None)
     class Response:
         status_code = 200
         def json(self):
@@ -82,7 +80,6 @@ def test_decider_gateway_choice_and_images(monkeypatch):
     import base64
     monkeypatch.setenv('VERCEL_API_KEY', 'test-only')
     monkeypatch.setenv('MONETA_IMAGE_BUCKET', 'test-bucket')
-    monkeypatch.setattr(jev, 'reserve_request', lambda *args: None)
     monkeypatch.setattr(jev.image_storage, 'configured', lambda: True)
     original = io.BytesIO()
     Image.new('RGB', (1800, 1800), 'red').save(original, format='PNG')
