@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Layers2, ArrowRight } from 'lucide-react'
+import { Layers2, ArrowRight, LoaderCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { AnalysisPage } from '@/components/analysis-page'
@@ -61,7 +61,7 @@ function App() {
     } catch { setError('Abmelden fehlgeschlagen. Bitte versuchen Sie es erneut.') }
   }
 
-  if (checking) return <main><p role="status">Anmeldung wird geprüft …</p></main>
+  if (checking) return <main className="flex min-h-svh items-center justify-center bg-background" role="status"><LoaderCircle aria-hidden="true" className="size-8 animate-spin text-muted-foreground" /><span className="sr-only">Anmeldung wird geprüft …</span></main>
   if (user) return (
     <TooltipProvider>
       <SidebarProvider style={{ '--sidebar-width': 'calc(var(--spacing) * 72)', '--header-height': 'calc(var(--spacing) * 12)' } as React.CSSProperties}>
