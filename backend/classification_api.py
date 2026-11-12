@@ -149,8 +149,18 @@ def model_call(connection, user, model, prompt, content, clue=False):
         prediction = response.output_text if clue else response.output_parsed
         if response.status != 'completed' or not prediction:
             raise HTTPException(502, 'Das Modell hat kein vollständiges Klassifizierungsergebnis geliefert.')
-    except RateLimitError:
-        raise HTTPException(503, 'OpenAI-Kontingent oder Anfragelimit erreicht. Bitte API-Abrechnung prüfen oder später erneut versuchen.') from None
+    except RateLimitError as exc:
+        messages = {
+            'credit_balance_exhausted': 'Das OpenAI-API-Guthaben ist aufgebraucht. Bitte Guthaben in der OpenAI-API-Abrechnung aufladen.',
+            'project_spend_limit_exceeded': 'Das Ausgabenlimit des OpenAI-Projekts ist erreicht. Bitte die Projektlimits prüfen.',
+            'organization_spend_limit_exceeded': 'Das Ausgabenlimit der OpenAI-Organisation ist erreicht. Bitte die Organisationslimits prüfen.',
+            'organization_usage_limit_exceeded': 'Das OpenAI-Nutzungslimit der Organisation ist erreicht. Bitte die Organisationslimits prüfen.',
+            'usage_limit_exceeded': 'Das OpenAI-Ausgaben- oder Nutzungslimit ist erreicht. Bitte Abrechnung und Limits prüfen.',
+            'rate_limit_exceeded': 'Das OpenAI-Anfragelimit ist vorübergehend erreicht. Bitte später erneut versuchen.',
+            'slow_down': 'OpenAI begrenzt die Anfragegeschwindigkeit. Bitte später erneut versuchen.',
+        }
+        message = messages.get(exc.code, 'OpenAI-Kontingent oder Anfragelimit erreicht. Bitte API-Abrechnung und Limits prüfen oder später erneut versuchen.')
+        raise HTTPException(503, message) from None
     except APITimeoutError:
         raise HTTPException(504, 'Die Modellantwort hat zu lange gedauert. Kein automatischer Neuversuch.') from None
     except OpenAIError:
