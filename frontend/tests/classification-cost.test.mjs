@@ -45,3 +45,8 @@ test('estimates GPT-5 Mini input and output with its standard price', () => {
   const item = { state: 'done', stalled: false, clues: {}, result: { model: 'gpt-5-mini-2025-08-07', input_tokens: 1_000_000, output_tokens: 1_000_000 } }
   assert.equal(estimateRunCost('gpt-5-mini', [item]).usd, 2.25)
 })
+
+test('estimates Decider input at the Vercel Gateway rate', () => {
+  const item = { state: 'done', stalled: false, clues: {}, result: { model: 'pplx-decider-v1.2', input_tokens: 1_000_000, output_tokens: null } }
+  assert.equal(estimateRunCost('perplexity/pplx-decider-v1.2', [item]).usd, 0.02)
+})

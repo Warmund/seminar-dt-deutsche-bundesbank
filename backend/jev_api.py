@@ -1,10 +1,12 @@
 """OpenCode System One Choice adapter; no synthetic explanations or multi-turn clues."""
 import base64
 import json
+import io
 import os
 import uuid
 
 import httpx
+from PIL import Image, UnidentifiedImageError
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -14,6 +16,8 @@ from moneta_pipeline import ASSETS, MODALITIES
 import image_storage
 
 ENDPOINT = 'https://opencode.ai/inference/systemone/v1/systemone'
+DECIDER_MODEL = 'perplexity/pplx-decider-v1.2'
+GATEWAY_ENDPOINT = 'https://ai-gateway.vercel.sh/typesafe/v1/systemone'
 CATEGORIES = set('ABCDEFGHIJKLMNOPQRSTU') | {'UNK'}
 
 
@@ -43,9 +47,10 @@ def build_questions(variant):
 
 
 def classify_jev(run,item,connection,user):
-    key = os.environ.get('OPENCODE_API_KEY')
+    is_decider = run['model'] == DECIDER_MODEL
+    key = os.environ.get('VERCEL_API_KEY' if is_decider else 'OPENCODE_API_KEY')
     if not key:
-        raise HTTPException(503,'OpenCode-Key fehlt im Backend.')
+        raise HTTPException(503, 'Vercel-AI-Gateway-Key fehlt im Backend.' if is_decider else 'OpenCode-Key fehlt im Backend.')
     state = {'name':item['name'],'sources':item['snapshot'].get('texts',{})}
     assets = {}
     for kind,image in item['snapshot']['images'].items():
@@ -61,9 +66,19 @@ def classify_jev(run,item,connection,user):
                 raise HTTPException(422,'Bild überschreitet 3 MB.')
         except (BotoCoreError,ClientError):
             raise HTTPException(503,'Bildquelle ist derzeit nicht erreichbar.') from None
-        ref = uuid.uuid4().hex
-        state[kind] = ref
-        assets[ref] = {'type':'image','format':'png','data_base64':base64.b64encode(content).decode()}
+        if is_decider:
+            try:
+                with Image.open(io.BytesIO(content)) as picture:
+                    picture.thumbnail((1400,1400))
+                    buffer = io.BytesIO()
+                    picture.save(buffer, format='PNG')
+                state[kind] = {'type':'image_url','image_url':{'url':'data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode()}}
+            except (UnidentifiedImageError,OSError,ValueError):
+                raise HTTPException(422,'Bild konnte nicht verarbeitet werden.') from None
+        else:
+            ref = uuid.uuid4().hex
+            state[kind] = ref
+            assets[ref] = {'type':'image','format':'png','data_base64':base64.b64encode(content).decode()}
     payload = {'model':run['model'],'state':state,'questions':json.loads(run['prompt'])}
     if assets:
         payload['assets'] = assets
@@ -73,13 +88,13 @@ def classify_jev(run,item,connection,user):
     reserve_request(connection,user)
     try:
         with httpx.Client(timeout=90) as client:
-            response = client.post(ENDPOINT,headers=headers,json=payload)
+            response = client.post(GATEWAY_ENDPOINT if is_decider else ENDPOINT,headers=headers,json=payload)
         if response.status_code in (401,403):
-            raise HTTPException(503,'OpenCode-Zugriff abgelehnt. API-Key und Modellzugriff prüfen.')
+            raise HTTPException(503, 'Vercel-AI-Gateway-Zugriff abgelehnt. API-Key und Modellzugriff prüfen.' if is_decider else 'OpenCode-Zugriff abgelehnt. API-Key und Modellzugriff prüfen.')
         if response.status_code in (402,429):
-            raise HTTPException(503,'OpenCode-Kontingent oder Anfragelimit erreicht.')
+            raise HTTPException(503, 'Vercel-AI-Gateway-Kontingent oder Anfragelimit erreicht.' if is_decider else 'OpenCode-Kontingent oder Anfragelimit erreicht.')
         if response.status_code != 200:
-            raise HTTPException(502,f'OpenCode-Anfrage fehlgeschlagen ({response.status_code}).')
+            raise HTTPException(502,f'{"Vercel AI Gateway" if is_decider else "OpenCode"}-Anfrage fehlgeschlagen ({response.status_code}).')
         body = response.json()
         answer = ChoiceAnswer.model_validate(body['answers']['nace'])
         allowed = set(payload['questions']['nace']['criteria'])
@@ -89,16 +104,17 @@ def classify_jev(run,item,connection,user):
         if not isinstance(actual_model,str):
             raise ValueError('Invalid model')
     except httpx.TimeoutException:
-        raise HTTPException(504,'OpenCode hat nicht rechtzeitig geantwortet. Kein automatischer Neuversuch.') from None
+        raise HTTPException(504, 'Vercel AI Gateway hat nicht rechtzeitig geantwortet. Kein automatischer Neuversuch.' if is_decider else 'OpenCode hat nicht rechtzeitig geantwortet. Kein automatischer Neuversuch.') from None
     except httpx.HTTPError:
-        raise HTTPException(502,'OpenCode ist derzeit nicht erreichbar.') from None
+        raise HTTPException(502, 'Vercel AI Gateway ist derzeit nicht erreichbar.' if is_decider else 'OpenCode ist derzeit nicht erreichbar.') from None
     except (ValidationError,ValueError,KeyError,TypeError):
-        raise HTTPException(502,'OpenCode hat kein gültiges Klassifizierungsergebnis geliefert.') from None
+        raise HTTPException(502, 'Vercel AI Gateway hat kein gültiges Klassifizierungsergebnis geliefert.' if is_decider else 'OpenCode hat kein gültiges Klassifizierungsergebnis geliefert.') from None
     inputs = set(item['snapshot'].get('texts',{})) | set(item['snapshot']['images'])
     expected = [kind for kind in MODALITIES if (run['sources']['text'] if kind in ('wikidata','wikipedia','website') else run['sources'][kind])]
     usage = body.get('usage') or {}
     return {'prediction':Prediction(category=answer.choice,explanation='',evidence=[],uncertainty='').model_dump(),
-            'reference':item['reference'],'model':actual_model,'provider':'opencode',
+            'reference':item['reference'],'model':actual_model,'provider':'vercel' if is_decider else 'opencode',
+            'confidence_method':'decider_distribution' if is_decider else 'jev',
             'confidence':answer.confidence,'probabilities':answer.probabilities,
             'used_sources':[kind for kind in expected if kind in inputs], 'missing_sources':[kind for kind in expected if kind not in inputs],
             'input_tokens':usage.get('input_tokens'),'output_tokens':usage.get('output_tokens')}

@@ -74,3 +74,43 @@ def test_jev_new_and_legacy_frozen_choices(monkeypatch):
     questions['nace']['criteria']['UNK'] = 'Insufficient evidence'
     run['prompt'] = json.dumps(questions)
     assert jev.classify_jev(run, item, None, None)['prediction']['category'] == 'UNK'
+
+
+def test_decider_gateway_choice_and_images(monkeypatch):
+    from PIL import Image
+    import base64
+    monkeypatch.setenv('VERCEL_API_KEY', 'test-only')
+    monkeypatch.setenv('MONETA_IMAGE_BUCKET', 'test-bucket')
+    monkeypatch.setattr(jev, 'reserve_request', lambda *args: None)
+    monkeypatch.setattr(jev.image_storage, 'configured', lambda: True)
+    original = io.BytesIO()
+    Image.new('RGB', (1800, 1800), 'red').save(original, format='PNG')
+    class Storage:
+        def get_object(self, **kwargs): return {'Body': io.BytesIO(original.getvalue())}
+    monkeypatch.setattr(jev.image_storage, 'client', lambda: Storage())
+    calls = []
+    class Response:
+        status_code = 200
+        def json(self): return {'answers': {'nace': {'type': 'choice', 'choice': 'G', 'confidence': 0.7, 'probabilities': {'G': 0.8, 'C': 0.2}}}, 'usage': {'input_tokens': 123}}
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def post(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+    monkeypatch.setattr(jev.httpx, 'Client', Client)
+    item = {'name': 'Bakery', 'reference': 'PRIVATE_REFERENCE', 'snapshot': {'texts': {'website': 'Bakery'}, 'images': {'osm': {'object_key': 'private-key'}}}}
+    run = {'model': jev.DECIDER_MODEL, 'prompt': json.dumps(jev.build_questions('Simple')), 'sources': {'text': True, 'osm': True, 'satellite': False}}
+    result = jev.classify_jev(run, item, None, None)
+    url, request = calls[0]
+    assert url == jev.GATEWAY_ENDPOINT
+    assert result['prediction']['category'] == 'G' and result['confidence'] == 0.7
+    assert result['confidence_method'] == 'decider_distribution' and result['provider'] == 'vercel'
+    payload = request['json']
+    assert 'PRIVATE_REFERENCE' not in str(payload) and 'private-key' not in str(payload)
+    assert 'UNK' not in payload['questions']['nace']['criteria'] and 'assets' not in payload
+    image_url = payload['state']['osm']['image_url']['url']
+    assert image_url.startswith('data:image/png;base64,')
+    with Image.open(io.BytesIO(base64.b64decode(image_url.split(',', 1)[1]))) as image:
+        assert image.size == (1400, 1400)

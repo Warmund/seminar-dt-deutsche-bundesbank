@@ -3,6 +3,7 @@ type Item = { state: string; stalled: boolean; clues: Record<string, Usage>; res
 
 // Standard prices per million tokens, verified 12 November 2026. Update when provider pricing changes.
 const PRICES: Record<string, { input: number; output: number }> = {
+  'perplexity/pplx-decider-v1.2': { input: 0.02, output: 0 },
   'gpt-5-mini': { input: 0.25, output: 2 },
   'gpt-6-luna': { input: 0.10, output: 0.50 },
   'gpt-6.1-terra': { input: 1, output: 5 },
@@ -16,7 +17,7 @@ export function estimateRunCost(model: string, items: Item[]) {
     const usages = [...Object.values(item.clues), ...(item.result ? [item.result] : [])]
     for (const usage of usages) {
       // Jev's response model may omit the free-tier suffix; the requested model determines billing.
-      const requested = model.startsWith('jev-') ? model : usage.model
+      const requested = (model.startsWith('jev-') || model.startsWith('perplexity/')) ? model : usage.model
       const key = Object.keys(PRICES).find(name => requested === name || (name.startsWith('gpt-') && requested?.startsWith(name + '-')))
       const price = key ? PRICES[key] : undefined
       if (!price || (price.input > 0 && (typeof usage.input_tokens !== 'number' || !Number.isFinite(usage.input_tokens) || usage.input_tokens < 0)) || (price.output > 0 && (typeof usage.output_tokens !== 'number' || !Number.isFinite(usage.output_tokens) || usage.output_tokens < 0))) {
