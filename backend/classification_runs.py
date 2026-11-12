@@ -142,6 +142,17 @@ def get_run(run_id: uuid.UUID, connection: Connection, user=Depends(current_user
     return {**run, 'items':items}
 
 
+@app.delete('/api/classification/runs/{run_id}', dependencies=[Depends(origin_check)])
+def delete_run(run_id: uuid.UUID, connection: Connection, user=Depends(current_user)):
+    run = connection.execute('SELECT id FROM classification_runs WHERE id=%s AND user_id=%s FOR UPDATE', (run_id,user['id'])).fetchone()
+    if not run:
+        raise HTTPException(404, 'Lauf nicht gefunden.')
+    if connection.execute("SELECT 1 FROM classification_run_items WHERE run_id=%s AND state='running'", (run_id,)).fetchone():
+        raise HTTPException(409, 'Lauf wird noch verarbeitet oder ist unterbrochen. Bitte zuerst den laufenden Schritt abschließen oder erneut versuchen.')
+    connection.execute('DELETE FROM classification_runs WHERE id=%s AND user_id=%s', (run_id,user['id']))
+    return {'ok': True}
+
+
 @app.post('/api/classification/runs/{run_id}/items/{position}', dependencies=[Depends(origin_check)])
 def process_item(run_id: uuid.UUID, position: int, connection: Connection, user=Depends(current_user), retry: bool = False):
     run = owned_run(connection, run_id, user)

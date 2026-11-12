@@ -182,3 +182,44 @@ def test_gpt_5_mini_is_an_allowed_run_model():
     run = NewRun.model_validate({'name': 'Vergleich', 'model': 'gpt-5-mini', 'method': 'multi_turn', 'sources': {'text': True, 'osm': True, 'satellite': True}, 'selection': {'count': 1, 'classes': ['G']}})
     assert run.model == 'gpt-5-mini'
     assert MODELS[run.model] == 'GPT-5 Mini'
+
+
+def test_delete_run_checks_ownership_origin_and_running_state():
+    run_id = uuid.uuid4()
+    class Cursor:
+        def __init__(self, row): self.row = row
+        def fetchone(self): return self.row
+    class Connection:
+        def __init__(self): self.owner = 1; self.running = False; self.deleted = False
+        def execute(self, sql, args=()):
+            if sql.startswith('SELECT id FROM classification_runs'):
+                assert 'FOR UPDATE' in sql
+                return Cursor({'id': run_id} if args == (run_id, self.owner) and not self.deleted else None)
+            if sql.startswith('SELECT 1 FROM classification_run_items'):
+                return Cursor({'exists': 1} if self.running else None)
+            if sql.startswith('DELETE FROM classification_runs'):
+                assert args == (run_id, self.owner)
+                self.deleted = True
+                return Cursor(None)
+            raise AssertionError('Unexpected SQL')
+    connection = Connection()
+    who = {'id': 1}
+    app.dependency_overrides[database] = lambda: connection
+    app.dependency_overrides[current_user] = lambda: who
+    try:
+        client = TestClient(app)
+        path = f'/api/classification/runs/{run_id}'
+        assert client.delete(path).status_code == 403
+        who['id'] = 2
+        assert client.delete(path, headers={'origin': 'http://localhost:5173'}).status_code == 404
+        assert not connection.deleted
+        who['id'] = 1
+        connection.running = True
+        assert client.delete(path, headers={'origin': 'http://localhost:5173'}).status_code == 409
+        assert not connection.deleted
+        connection.running = False
+        assert client.delete(path, headers={'origin': 'http://localhost:5173'}).status_code == 200
+        assert connection.deleted
+        assert client.delete(path, headers={'origin': 'http://localhost:5173'}).status_code == 404
+    finally:
+        app.dependency_overrides.clear()
