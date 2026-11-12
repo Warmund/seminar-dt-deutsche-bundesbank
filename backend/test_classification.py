@@ -56,3 +56,27 @@ def test_classification_boundaries_and_reference_separation(monkeypatch):
         assert client.get('/api/classification/status').status_code == 401
     finally:
         app.dependency_overrides.clear()
+
+
+def test_verbalized_confidence_schema_and_legacy_compatibility(monkeypatch):
+    from pydantic import ValidationError
+    import pytest
+
+    for invalid in (-0.01, 1.01, float('nan')):
+        with pytest.raises(ValidationError):
+            api.ConfidencePrediction(category='G', explanation='', evidence=[], uncertainty='', confidence=invalid)
+
+    formats = []
+    class FakeClient:
+        def __init__(self, **kwargs): self.responses = self
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def parse(self, **kwargs):
+            formats.append(kwargs['text_format'])
+            return SimpleNamespace(status='completed', output_parsed=api.Prediction(category='G', explanation='', evidence=[], uncertainty=''), model='test', usage=None)
+    monkeypatch.setattr(api, 'OpenAI', FakeClient)
+    monkeypatch.setenv('OPENAI_API_KEY', 'test-only')
+    monkeypatch.setattr(api, 'reserve_request', lambda connection, user: None)
+    api.model_call(None, {'id': 1}, 'test', 'old prompt', [])
+    api.model_call(None, {'id': 1}, 'test', 'VERBALIZED_CONFIDENCE_V1', [])
+    assert formats == [api.Prediction, api.ConfidencePrediction]

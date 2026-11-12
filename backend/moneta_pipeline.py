@@ -87,7 +87,7 @@ def next_step(run, item, connection, user):
                 content.extend([{'type':'input_text','text':'Image source: '+kind},image_content(inputs[kind])])
     response, prediction = model_call(connection,user,run['model'],run['prompt'],content)
     expected = [kind for kind in MODALITIES if (run['sources']['text'] if kind in ('wikidata','wikipedia','website') else run['sources'][kind])]
-    result = {'prediction':prediction.model_dump(),'reference':item['reference'],'model':response.model,
+    result = {'prediction':prediction.model_dump(),'confidence':getattr(prediction,'confidence',None),'confidence_method':'verbalized' if getattr(prediction,'confidence',None) is not None else None,'reference':item['reference'],'model':response.model,
               'used_sources':[kind for kind in expected if kind in inputs], 'missing_sources':[kind for kind in expected if kind not in inputs],
               'input_tokens':response.usage.input_tokens if response.usage else None,
               'output_tokens':response.usage.output_tokens if response.usage else None,

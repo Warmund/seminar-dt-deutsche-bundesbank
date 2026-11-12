@@ -1,5 +1,5 @@
 import type * as React from "react"
-import { CommandIcon, ScanLineIcon, FolderIcon, LogOutIcon, Settings2Icon, UserRoundIcon, ShieldCheckIcon } from "lucide-react"
+import { CommandIcon, ChartColumnIcon, ScanLineIcon, FolderIcon, LogOutIcon, Settings2Icon, UserRoundIcon, ShieldCheckIcon } from "lucide-react"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -26,6 +26,7 @@ export function AppSidebar({ username, isAdmin, page, onLogout, ...props }: Reac
           <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'classification'}>
             <a href="#classification"><ScanLineIcon /><span>Klassifizierung</span></a>
           </SidebarMenuButton></SidebarMenuItem>
+          <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'analysis'}><a href="#analysis"><ChartColumnIcon /><span>Analyse</span></a></SidebarMenuButton></SidebarMenuItem>
         </SidebarMenu></SidebarGroupContent></SidebarGroup>
       </SidebarContent>
       <SidebarFooter><SidebarMenu>

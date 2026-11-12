@@ -98,6 +98,7 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
         prompt, clue_prompts = json.dumps(build_questions(data.prompt_config)), {}
     else:
         prompt, clue_prompts = build_prompts(data.method,data.prompt_config,data.sources.model_dump())
+        prompt += '\nVERBALIZED_CONFIDENCE_V1: Provide confidence as your own estimated probability between 0 and 1 that your selected NACE category is correct. Do not report confidence in the quality of explanation. Express uncertainty honestly.'
     connection.execute('INSERT INTO classification_runs (id,user_id,name,model,prompt,sources,method,prompt_config,clue_prompts,selection) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                        (run_id,user['id'],data.name,model,prompt,Jsonb(data.sources.model_dump()),data.method,data.prompt_config,Jsonb(clue_prompts),Jsonb(criteria)))
     kinds = [kind for kind in ('osm','satellite') if getattr(data.sources,kind)]

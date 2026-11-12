@@ -191,3 +191,11 @@ weiterhin fehlen. Die Accuracy-Verbesserung muss separat gemessen werden.
 Originaldaten und bestehende Lauf-Snapshots bleiben unverändert. GPT-Läufe nutzen
 weiterhin ihre bisherige Textaufbereitung. Neue Jev-Snapshots speichern die
 Verarbeitungsversion und die tatsächlich ausgewählten Texte.
+
+### Konfidenz und Analyse
+
+Neue OpenAI-Klassifizierungsläufe fragen eine verbalisierte Selbsteinschätzung zwischen 0 und 1 ab und speichern sie mit dem Ergebnis. Es handelt sich nicht um eine gemessene Wahrscheinlichkeit; ihre Kalibrierung muss anhand von Referenzdaten überprüft werden. Ältere Läufe bleiben unverändert und besitzen gegebenenfalls keinen numerischen Wert.
+
+Unter „Analyse“ können eigene gespeicherte Läufe oder eine JSON-Datei mit `items` beziehungsweise einer Liste geladen werden. Ein einfaches Eintragsformat ist `{"reference":"G","prediction":"G","confidence":0.8,"confidence_method":"verbalized"}`. Das ursprüngliche MONETA-Format mit `category` und `llm_response` wird ebenfalls gelesen. Ungültige oder unvollständige Einträge werden ausgelassen; fehlende oder ungültige Konfidenzwerte werden nicht ersetzt. Unterschiedliche Konfidenzmethoden müssen getrennt analysiert werden.
+
+Die Seite zeigt Accuracy, ECE über zehn gleich breite Intervalle und AUROC zur Unterscheidung richtiger und falscher Vorhersagen. Für die Schwellenwertanalyse werden Datenpunkt-IDs reproduzierbar ungefähr 70:30 aufgeteilt; ohne ID wird die Reihenfolge verwendet. Fehlende Konfidenz zählt zur manuellen Prüfung. Die angezeigte automatische Accuracy bewertet nur die automatisch angenommenen Fälle; tatsächliche Ergebnisse menschlicher Prüfungen sind nicht enthalten. Die Überprüfungsmenge sollte erst nach Festlegung des Schwellenwerts betrachtet werden; wiederholtes Anpassen anhand dieser Menge verzerrt die Bewertung. Die Nutzerstudie mit menschlichen Entscheidungen, Bearbeitungszeit und Rückfragen ist noch nicht angebunden.

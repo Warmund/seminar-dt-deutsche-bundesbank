@@ -48,6 +48,10 @@ class Prediction(BaseModel):
     uncertainty: str = Field(max_length=1500)
 
 
+class ConfidencePrediction(Prediction):
+    confidence: float = Field(ge=0, le=1, allow_inf_nan=False, description='Self-assessed probability that the selected NACE section is correct, between 0 and 1')
+
+
 # Only input features are allowed: never include reference labels, predictions or history.
 TAG_KEYS = {'name', 'brand', 'operator', 'shop', 'office', 'amenity', 'craft', 'industrial',
             'landuse', 'building', 'tourism', 'leisure', 'healthcare', 'description',
@@ -141,7 +145,7 @@ def model_call(connection, user, model, prompt, content, clue=False):
                 instructions=prompt,
                 input=[{'role': 'user', 'content': content}],
             )
-            response = client.responses.create(**options) if clue else client.responses.parse(**options, text_format=Prediction)
+            response = client.responses.create(**options) if clue else client.responses.parse(**options, text_format=ConfidencePrediction if 'VERBALIZED_CONFIDENCE_V1' in prompt else Prediction)
         prediction = response.output_text if clue else response.output_parsed
         if response.status != 'completed' or not prediction:
             raise HTTPException(502, 'Das Modell hat kein vollständiges Klassifizierungsergebnis geliefert.')
