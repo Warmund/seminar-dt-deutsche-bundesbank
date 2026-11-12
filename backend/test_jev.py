@@ -10,6 +10,7 @@ import jev_api as jev
 def test_jev_payload_and_probability_result(monkeypatch):
     monkeypatch.setenv('OPENCODE_API_KEY','test-only')
     monkeypatch.setattr(jev,'reserve_request',lambda *args: None)
+    monkeypatch.setattr(jev,'gateway_post',lambda *args: pytest.fail('OpenCode must not use the Vercel pause'))
     monkeypatch.setattr(jev.image_storage,'configured',lambda: True)
     class Storage:
         def get_object(self,**kwargs): return {'Body':io.BytesIO(b'png-test-data')}
@@ -100,6 +101,7 @@ def test_decider_gateway_choice_and_images(monkeypatch):
             calls.append((url, kwargs))
             return Response()
     monkeypatch.setattr(jev.httpx, 'Client', Client)
+    monkeypatch.setattr(jev, 'gateway_post', lambda connection, client, headers, payload: client.post(jev.GATEWAY_ENDPOINT, headers=headers, json=payload))
     item = {'name': 'Bakery', 'reference': 'PRIVATE_REFERENCE', 'snapshot': {'texts': {'website': 'Bakery'}, 'images': {'osm': {'object_key': 'private-key'}}}}
     run = {'model': jev.DECIDER_MODEL, 'prompt': json.dumps(jev.build_questions('Simple')), 'sources': {'text': True, 'osm': True, 'satellite': False}}
     result = jev.classify_jev(run, item, None, None)
@@ -114,3 +116,51 @@ def test_decider_gateway_choice_and_images(monkeypatch):
     assert image_url.startswith('data:image/png;base64,')
     with Image.open(io.BytesIO(base64.b64decode(image_url.split(',', 1)[1]))) as image:
         assert image.size == (1400, 1400)
+
+
+def test_gateway_waits_four_seconds_and_releases_lock_on_error():
+    events = []
+    class Connection:
+        def execute(self, query, params=None): events.append((query, params))
+        def commit(self): events.append(('commit', None))
+    class Client:
+        def post(self, *args, **kwargs):
+            events.append(('post', None))
+            raise jev.httpx.ReadTimeout('timeout')
+    with pytest.raises(jev.httpx.ReadTimeout):
+        jev.gateway_post(Connection(), Client(), {}, {})
+    assert events == [
+        ('SELECT pg_advisory_xact_lock(%s, %s)', (1447187280, 4)),
+        ('post', None),
+        ('SELECT pg_sleep(4)', None),
+        ('commit', None),
+    ]
+
+
+def test_gateway_requests_share_lock_across_connections():
+    import threading
+    import time
+    shared_lock = threading.Lock()
+    events = []
+    class Connection:
+        def __init__(self, name): self.name = name
+        def execute(self, sql, params=None):
+            if 'pg_advisory_xact_lock' in sql:
+                shared_lock.acquire()
+            elif 'pg_sleep' in sql:
+                assert sql == 'SELECT pg_sleep(4)'
+                events.append((self.name, 'pause'))
+                time.sleep(0.02)
+        def commit(self):
+            events.append((self.name, 'release'))
+            shared_lock.release()
+    class Client:
+        def __init__(self, name): self.name = name
+        def post(self, *args, **kwargs):
+            events.append((self.name, 'request'))
+    threads = [threading.Thread(target=jev.gateway_post, args=(Connection(name), Client(name), {}, {})) for name in ('a', 'b')]
+    for thread in threads: thread.start()
+    for thread in threads: thread.join()
+    for i in (0, 3):
+        name = events[i][0]
+        assert events[i:i+3] == [(name, 'request'), (name, 'pause'), (name, 'release')]
