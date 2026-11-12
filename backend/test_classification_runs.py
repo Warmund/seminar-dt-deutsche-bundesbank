@@ -174,3 +174,11 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         app.dependency_overrides.clear()
         with psycopg.connect(url, autocommit=True) as c:
             c.execute(f'DROP SCHEMA {schema} CASCADE')
+
+
+def test_gpt_5_mini_is_an_allowed_run_model():
+    from classification_runs import NewRun
+    from classification_api import MODELS
+    run = NewRun.model_validate({'name': 'Vergleich', 'model': 'gpt-5-mini', 'method': 'multi_turn', 'sources': {'text': True, 'osm': True, 'satellite': True}, 'selection': {'count': 1, 'classes': ['G']}})
+    assert run.model == 'gpt-5-mini'
+    assert MODELS[run.model] == 'GPT-5 Mini'

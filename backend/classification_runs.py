@@ -35,7 +35,7 @@ class DatasetSelection(BaseModel):
 
 class NewRun(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
-    model: Literal['gpt-6-luna', 'gpt-6.1-terra', 'jev-1.13', 'jev-1.13-free'] | None = None
+    model: Literal['gpt-5-mini', 'gpt-6-luna', 'gpt-6.1-terra', 'jev-1.13', 'jev-1.13-free'] | None = None
     method: Literal['zero_shot', 'multi_turn'] = 'zero_shot'
     prompt_config: Literal['Simple', 'Extended'] = 'Simple'
     name: str = Field(min_length=1, max_length=150)

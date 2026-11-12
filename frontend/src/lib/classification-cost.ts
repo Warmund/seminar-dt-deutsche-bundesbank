@@ -3,6 +3,7 @@ type Item = { state: string; stalled: boolean; clues: Record<string, Usage>; res
 
 // Standard prices per million tokens, verified 12 November 2026. Update when provider pricing changes.
 const PRICES: Record<string, { input: number; output: number }> = {
+  'gpt-5-mini': { input: 0.25, output: 2 },
   'gpt-6-luna': { input: 0.10, output: 0.50 },
   'gpt-6.1-terra': { input: 1, output: 5 },
   'jev-1.13': { input: 0.042, output: 0 },

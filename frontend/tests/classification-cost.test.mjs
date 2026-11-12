@@ -40,3 +40,8 @@ test('uses requested Jev free tier even when the response model omits its suffix
   assert.equal(estimateRunCost('jev-1.13-free', [item]).usd, 0)
   assert.equal(estimateRunCost('jev-1.13', [item]).usd, 0.042)
 })
+
+test('estimates GPT-5 Mini input and output with its standard price', () => {
+  const item = { state: 'done', stalled: false, clues: {}, result: { model: 'gpt-5-mini-2025-08-07', input_tokens: 1_000_000, output_tokens: 1_000_000 } }
+  assert.equal(estimateRunCost('gpt-5-mini', [item]).usd, 2.25)
+})
