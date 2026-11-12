@@ -152,7 +152,7 @@ export function MonetaPage() {
             </CardContent>
           </Card>)}
         </div>
-        <div className="flex flex-col gap-4 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-xl text-sm text-muted-foreground">Bilder lassen sich auch einzeln ergänzen. Die Zuordnung erfolgt über den Dateinamen, z. B. way_123.png. Bestehende Daten werden aktualisiert.</p><Button className="shrink-0" disabled={busy || (!jsonFile && !osmFiles.length && !satelliteFiles.length)} onClick={upload}>{busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Upload data-icon="inline-start" />}{busy ? 'Import läuft …' : 'Import starten'}</Button></div>
+        <div className="flex justify-end border-t pt-5"><Button className="shrink-0" disabled={busy || (!jsonFile && !osmFiles.length && !satelliteFiles.length)} onClick={upload}>{busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Upload data-icon="inline-start" />}{busy ? 'Import läuft …' : 'Import starten'}</Button></div>
         {progress && <p role="status" className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{progress}</p>}
       </CardContent>
     </Card>
