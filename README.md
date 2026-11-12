@@ -160,8 +160,9 @@ Variablen nur im Backend-Projekt setzen, den Key als Secret. Die Oberfläche
 bietet das konfigurierte Jev-Modell neben den GPT-Modellen an.
 
 Jev verwendet die OpenCode-System-One-API statt OpenAI Responses. Eine Choice-Frage
-enthält alle 21 NACE-Abschnitte plus UNK; Simple/Extended steuert die Beschreibung
-der Kriterien. Name, ausgewählte Quelltexte und optionale Bilder sind der State.
+enthält bei neuen Läufen die 21 NACE-Abschnitte ohne UNK; Simple/Extended steuert die Beschreibung
+der Kriterien. Die Konfidenz dient zur Auswahl manueller Prüffälle. Bereits angelegte
+Läufe behalten ihre gespeicherte Auswahl einschließlich UNK. Name, ausgewählte Quelltexte und optionale Bilder sind der State.
 Referenz und Klassenfilter werden nicht übermittelt. Bilder werden serverseitig
 aus dem privaten Speicher gelesen und als PNG-Assets übertragen; diese Jev-Funktion
 ist laut TypeSafe experimentell. Quelle und Format:
