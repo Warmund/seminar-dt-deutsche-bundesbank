@@ -95,7 +95,7 @@ def execute_classification(data, connection, user, row=None, images=None, model=
         raise HTTPException(503, 'OpenAI-Key ist im Backend noch nicht konfiguriert.')
     if not any(data.sources.model_dump().values()):
         raise HTTPException(422, 'Bitte mindestens eine Quelle auswählen.')
-    row = row or connection.execute('SELECT name, data, category FROM moneta_records WHERE osm_type=%s AND osm_id=%s', (data.osm_type, data.osm_id)).fetchone()
+    row = row or connection.execute('SELECT name, data, category FROM moneta_records WHERE dataset_id=1 AND osm_type=%s AND osm_id=%s', (data.osm_type, data.osm_id)).fetchone()
     if not row:
         raise HTTPException(404, 'Datenpunkt nicht gefunden.')
     used = []
@@ -110,7 +110,7 @@ def execute_classification(data, connection, user, row=None, images=None, model=
     for kind in ('osm', 'satellite'):
         if not getattr(data.sources, kind):
             continue
-        image = images.get(kind) if images is not None else connection.execute('SELECT content, object_key FROM moneta_images WHERE osm_type=%s AND osm_id=%s AND kind=%s', (data.osm_type, data.osm_id, kind)).fetchone()
+        image = images.get(kind) if images is not None else connection.execute('SELECT content, object_key FROM moneta_images WHERE dataset_id=1 AND osm_type=%s AND osm_id=%s AND kind=%s', (data.osm_type, data.osm_id, kind)).fetchone()
         if not image:
             missing.append(kind)
             continue

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
@@ -49,34 +50,14 @@ export function MonetaPage() {
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
-  const [q, setQ] = useState('')
-  const [offset, setOffset] = useState(0)
-  const [revision, setRevision] = useState(0)
-  const [overview, setOverview] = useState<Overview>({ total: 0, items: [] })
-  const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<Item | null>(null)
-  const [detail, setDetail] = useState<unknown>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    setLoading(true)
-    api(`/records?q=${encodeURIComponent(q)}&offset=${offset}`, { signal: controller.signal })
-      .then(setOverview).catch(e => { if (e.name !== 'AbortError') setError(e.message) })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    return () => controller.abort()
-  }, [q, offset, revision])
-
-  useEffect(() => {
-    if (!selected) return
-    const controller = new AbortController()
-    setDetail(null)
-    api(`/records/${selected.osm_type}/${selected.osm_id}`, { signal: controller.signal })
-      .then(setDetail).catch(e => { if (e.name !== 'AbortError') setError(e.message) })
-    return () => controller.abort()
-  }, [selected])
-
+  const [revision,setRevision]=useState(0)
+  const [datasets,setDatasets]=useState<{id:number;name:string;total:number}[]>([])
+  const [target,setTarget]=useState('new')
+  const [newName,setNewName]=useState('')
+  const [opened,setOpened]=useState<number|null>(1)
+  useEffect(()=>{let active=true;api('/datasets').then(value=>{if(active)setDatasets(value.items)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[revision])
   async function upload() {
-    setBusy(true); setError(''); setProgress('Dateien werden geprüft …'); setSelected(null)
+    setBusy(true); setError(''); setProgress('Dateien werden geprüft …')
     let saved = 0
     let cleaned = 0
     try {
@@ -105,12 +86,18 @@ export function MonetaPage() {
         if (imageKeys.has(key)) throw new Error(`Doppeltes Bild: ${file.name}`)
         imageKeys.add(key)
       }
+      let datasetId=target
+      if(target==='new'){
+        if(!records.length)throw new Error('Für einen neuen Datensatz bitte zuerst eine JSON-Datei auswählen.')
+        const created=await api('/datasets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newName.trim()})})
+        datasetId=String(created.id);setTarget(datasetId);setOpened(created.id)
+      }
       const total = records.length + images.length
       for (const body of records) {
         setProgress(`Import ${saved + 1} von ${total}: Unternehmensdaten`)
         const record = JSON.parse(body)
         try {
-          const result = await api('/records', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+          const result = await api(`/records?dataset_id=${datasetId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
           cleaned += result.removed_null_characters ?? 0
         } catch (e) { throw new Error(`${record.type}_${record.id} (${record.tags?.name ?? record.name ?? ''}): ${e instanceof Error ? e.message : 'Import fehlgeschlagen'}`) }
         saved++
@@ -118,7 +105,7 @@ export function MonetaPage() {
       for (const { file, kind } of images) {
         const [type, id] = file.name.slice(0, -4).split('_')
         setProgress(`Import ${saved + 1} von ${total}: ${file.name}`)
-        try { await api(`/records/${type}/${id}/images/${kind}`, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: file }) }
+        try { await api(`/records/${type}/${id}/images/${kind}?dataset_id=${datasetId}`, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: file }) }
         catch (e) { throw new Error(`${file.name}: ${e instanceof Error ? e.message : 'Upload fehlgeschlagen'}`) }
         saved++
       }
@@ -126,7 +113,7 @@ export function MonetaPage() {
     } catch (e) {
       setError(`${e instanceof Error ? e.message : 'Import fehlgeschlagen'} Bereits gespeichert: ${saved}. Ein erneuter Import kann sicher gestartet werden.`)
       setProgress(`Import angehalten.${cleaned ? ` Bis dahin ${cleaned} Nullzeichen bereinigt.` : ''}`)
-    } finally { setBusy(false); setOffset(0); setRevision(r => r + 1) }
+    } finally { setBusy(false); setRevision(r => r + 1) }
   }
 
   return <div className="flex flex-col gap-6 p-4 lg:p-6">
@@ -134,6 +121,7 @@ export function MonetaPage() {
     <Card>
       <CardHeader className="gap-2"><div className="flex items-center justify-between gap-4"><CardTitle>Daten importieren</CardTitle><Badge variant="outline">Lokale Aufbereitung</Badge></div><CardDescription>Lade deine angereicherten Daten und die dazugehörigen Bilder hoch.</CardDescription></CardHeader>
       <CardContent className="flex flex-col gap-6">
+        <FieldGroup className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel>Importziel</FieldLabel><Select value={target} onValueChange={setTarget} disabled={busy}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectGroup><SelectItem value="new">Neuen Datensatz anlegen</SelectItem>{datasets.map(dataset=><SelectItem key={dataset.id} value={String(dataset.id)}>{dataset.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>{target==='new'&&<Field><FieldLabel htmlFor="new-dataset-name">Name des Datensatzes</FieldLabel><Input id="new-dataset-name" maxLength={150} value={newName} disabled={busy} onChange={e=>setNewName(e.target.value)} placeholder="z. B. MONETA-2000"/></Field>}</FieldGroup>
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="gap-4 shadow-none">
             <CardHeader><div className="mb-3 flex size-10 items-center justify-center rounded-lg bg-muted"><FileJson className="size-5" /></div><CardTitle>Unternehmensdaten</CardTitle><CardDescription>Die angereicherte MONETA-Datei mit Texten und Metadaten.</CardDescription></CardHeader>
@@ -152,12 +140,43 @@ export function MonetaPage() {
             </CardContent>
           </Card>)}
         </div>
-        <div className="flex justify-end border-t pt-5"><Button className="shrink-0" disabled={busy || (!jsonFile && !osmFiles.length && !satelliteFiles.length)} onClick={upload}>{busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Upload data-icon="inline-start" />}{busy ? 'Import läuft …' : 'Import starten'}</Button></div>
+        <div className="flex justify-end border-t pt-5"><Button className="shrink-0" disabled={busy || (target==='new'&&!newName.trim()) || (!jsonFile && !osmFiles.length && !satelliteFiles.length)} onClick={upload}>{busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Upload data-icon="inline-start" />}{busy ? 'Import läuft …' : 'Import starten'}</Button></div>
         {progress && <p role="status" className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{progress}</p>}
       </CardContent>
     </Card>
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    <Card>
+    <div className="flex flex-col gap-3"><h2 className="text-lg font-semibold">Datensätze</h2>{datasets.map(dataset=><details key={dataset.id} open={opened===dataset.id} className="rounded-xl border bg-card"><summary className="flex cursor-pointer items-center justify-between gap-3 px-5 py-4 font-medium" onClick={event=>{event.preventDefault();setOpened(current=>current===dataset.id?null:dataset.id)}}><span>{opened===dataset.id?'▾':'▸'} {dataset.name}</span><Badge variant="secondary">{dataset.total} Datenpunkte</Badge></summary>{opened===dataset.id&&<DatasetRecords key={dataset.id} datasetId={dataset.id} revision={revision}/>}</details>)}</div>
+  </div>
+}
+
+function DatasetRecords({datasetId,revision}:{datasetId:number;revision:number}){
+  const [error,setError]=useState('')
+  const [q, setQ] = useState('')
+  const [offset, setOffset] = useState(0)
+  const [overview, setOverview] = useState<Overview>({ total: 0, items: [] })
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<Item | null>(null)
+  const [detail, setDetail] = useState<unknown>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setLoading(true)
+    api(`/records?dataset_id=${datasetId}&q=${encodeURIComponent(q)}&offset=${offset}`, { signal: controller.signal })
+      .then(setOverview).catch(e => { if (e.name !== 'AbortError') setError(e.message) })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [datasetId, q, offset, revision])
+
+  useEffect(() => {
+    if (!selected) return
+    const controller = new AbortController()
+    setDetail(null)
+    api(`/records/${selected.osm_type}/${selected.osm_id}?dataset_id=${datasetId}`, { signal: controller.signal })
+      .then(setDetail).catch(e => { if (e.name !== 'AbortError') setError(e.message) })
+    return () => controller.abort()
+  }, [selected,datasetId])
+
+  return <div className="border-t p-4">{error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}    <Card>
       <CardHeader><CardTitle>Datenpunkte</CardTitle><CardDescription>{overview.total} Treffer · NACE-Abschnitte aus dem importierten Datensatz</CardDescription></CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Input aria-label="Datenpunkte suchen" placeholder="Name, OSM-ID oder NACE-Abschnitt suchen …" value={q} onChange={e => { setQ(e.target.value); setOffset(0) }} />
@@ -177,7 +196,7 @@ export function MonetaPage() {
         {selected && <div className="flex flex-col gap-6">
           <div className="grid gap-4 md:grid-cols-2">{(['osm', 'satellite'] as const).map(kind => <figure key={kind} className="flex min-w-0 flex-col gap-2">
             <figcaption className="text-sm font-medium">{kind === 'osm' ? 'OpenStreetMap-Karte' : 'Satellitenbild'}</figcaption>
-            {selected[kind] ? <img className="max-h-96 w-full rounded-lg border object-contain" src={`/api/moneta/records/${selected.osm_type}/${selected.osm_id}/images/${kind}?v=${revision}`} alt={`${kind === 'osm' ? 'Karte' : 'Satellitenbild'}: ${selected.name}`} /> : <p className="rounded-lg border p-6 text-sm text-muted-foreground">Dieses Bild wurde noch nicht hochgeladen.</p>}
+            {selected[kind] ? <img className="max-h-96 w-full rounded-lg border object-contain" src={`/api/moneta/records/${selected.osm_type}/${selected.osm_id}/images/${kind}?dataset_id=${datasetId}&v=${revision}`} alt={`${kind === 'osm' ? 'Karte' : 'Satellitenbild'}: ${selected.name}`} /> : <p className="rounded-lg border p-6 text-sm text-muted-foreground">Dieses Bild wurde noch nicht hochgeladen.</p>}
           </figure>)}</div>
           <section className="flex flex-col gap-4" aria-label="Aufbereitete Texte">
             <h3 className="font-semibold">Aufbereitete Texte</h3>

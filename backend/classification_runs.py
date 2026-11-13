@@ -35,6 +35,7 @@ class DatasetSelection(BaseModel):
 
 class NewRun(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    dataset_id: int = Field(default=1,ge=1)
     model: str | None = Field(default=None, max_length=300)
     method: Literal['zero_shot', 'multi_turn'] = 'zero_shot'
     prompt_config: Literal['Simple', 'Extended'] = 'Simple'
@@ -58,8 +59,8 @@ def owned_run(connection, run_id, user):
 
 
 @app.get('/api/classification/dataset', dependencies=[Depends(current_user)])
-def dataset(connection: Connection):
-    rows = connection.execute('SELECT category,count(*) AS count FROM moneta_records GROUP BY category').fetchall()
+def dataset(connection: Connection, dataset_id: Annotated[int, Query(ge=1)] = 1):
+    rows = connection.execute('SELECT category,count(*) AS count FROM moneta_records WHERE dataset_id=%s GROUP BY category',(dataset_id,)).fetchall()
     counts = {row['category']:row['count'] for row in rows}
     return {'total':sum(counts.values()), 'classes':[{'category':entry['category'],'title':entry['title'],'count':counts.get(entry['category'],0)} for entry in ASSETS['sections']]}
 
@@ -71,8 +72,8 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
     if data.method == 'multi_turn' and not all(data.sources.model_dump().values()):
         raise HTTPException(422, 'Multi-Turn verwendet alle verfügbaren Quellen wie MONETA.')
     if data.selection:
-        rows = connection.execute('SELECT osm_type,osm_id,name,category,data FROM moneta_records WHERE category = ANY(%s) ORDER BY osm_type,osm_id LIMIT %s',
-                                  (data.selection.classes,data.selection.count)).fetchall()
+        rows = connection.execute('SELECT osm_type,osm_id,name,category,data FROM moneta_records WHERE dataset_id=%s AND category = ANY(%s) ORDER BY osm_type,osm_id LIMIT %s',
+                                  (data.dataset_id,data.selection.classes,data.selection.count)).fetchall()
         if len(rows) != data.selection.count:
             raise HTTPException(422, f'Für die gewählten Klassen sind nur {len(rows)} Datenpunkte verfügbar. Bitte die Anzahl reduzieren.')
         criteria = {**data.selection.model_dump(), 'order':'osm_type,osm_id'}
@@ -82,11 +83,14 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
             raise HTTPException(422,'Doppelte Unternehmen in der Auswahl.')
         rows = []
         for item in data.items:
-            row = connection.execute('SELECT osm_type,osm_id,name,category,data FROM moneta_records WHERE osm_type=%s AND osm_id=%s',(item.osm_type,item.osm_id)).fetchone()
+            row = connection.execute('SELECT osm_type,osm_id,name,category,data FROM moneta_records WHERE dataset_id=%s AND osm_type=%s AND osm_id=%s',(data.dataset_id,item.osm_type,item.osm_id)).fetchone()
             if not row:
                 raise HTTPException(422,'Ein ausgewähltes Unternehmen ist nicht mehr vorhanden.')
             rows.append(row)
         criteria = {}
+    selected_dataset=connection.execute('SELECT id,name FROM moneta_datasets WHERE id=%s',(data.dataset_id,)).fetchone()
+    if not selected_dataset:raise HTTPException(404,'Datensatz nicht gefunden.')
+    criteria.update(dataset_id=data.dataset_id,dataset_name=selected_dataset['name'])
     model = data.model or os.environ.get('OPENAI_MODEL','gpt-6-luna')
     if (model.startswith('jev-') or model == 'perplexity/pplx-decider-v1.2') and data.method != 'zero_shot':
         raise HTTPException(422,'Das Entscheidungsmodell unterstützt nur das direkte Verfahren.')
@@ -103,22 +107,22 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
     else:
         prompt, clue_prompts = build_prompts(data.method,data.prompt_config,data.sources.model_dump())
         prompt += '\nVERBALIZED_CONFIDENCE_V1: Provide confidence as your own estimated probability between 0 and 1 that your selected NACE category is correct. Do not report confidence in the quality of explanation. Express uncertainty honestly.'
-    connection.execute('INSERT INTO classification_runs (id,user_id,name,model,prompt,sources,method,prompt_config,clue_prompts,selection) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-                       (run_id,user['id'],data.name,model,prompt,Jsonb(data.sources.model_dump()),data.method,data.prompt_config,Jsonb(clue_prompts),Jsonb(criteria)))
+    connection.execute('INSERT INTO classification_runs (id,user_id,name,model,prompt,sources,method,prompt_config,clue_prompts,selection,dataset_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                       (run_id,user['id'],data.name,model,prompt,Jsonb(data.sources.model_dump()),data.method,data.prompt_config,Jsonb(clue_prompts),Jsonb(criteria),data.dataset_id))
     kinds = [kind for kind in ('osm','satellite') if getattr(data.sources,kind)]
     images_by_record = {}
     if kinds:
         images = connection.execute(
-            'SELECT osm_type,osm_id,kind,object_key FROM moneta_images WHERE kind = ANY(%s) '
+            'SELECT osm_type,osm_id,kind,object_key FROM moneta_images WHERE dataset_id=%s AND kind = ANY(%s) '
             'AND (osm_type,osm_id) IN (SELECT * FROM unnest(%s::text[],%s::bigint[]))',
-            (kinds,[row['osm_type'] for row in rows],[row['osm_id'] for row in rows])).fetchall()
+            (data.dataset_id,kinds,[row['osm_type'] for row in rows],[row['osm_id'] for row in rows])).fetchall()
         for image in images:
             if not image['object_key']:
                 raise HTTPException(409,'Bitte zuerst die alten Datenbankbilder in den Object Storage migrieren.')
             images_by_record.setdefault((image['osm_type'],image['osm_id']),{})[image['kind']] = {'object_key':image['object_key']}
     inserts = []
     for position, row in enumerate(rows):
-        snapshot = {'texts':source_texts(row['data'],for_jev=(model.startswith('jev-') or model == 'perplexity/pplx-decider-v1.2')) if data.sources.text else {},
+        snapshot = {'tags':row['data'].get('tags') or row['data'].get('osm_tags') or {}, 'texts':source_texts(row['data'],for_jev=(model.startswith('jev-') or model == 'perplexity/pplx-decider-v1.2')) if data.sources.text else {},
                     'images':images_by_record.get((row['osm_type'],row['osm_id']),{})}
         if (model.startswith('jev-') or model == 'perplexity/pplx-decider-v1.2'):
             snapshot['text_preprocessing'] = TEXT_PREPROCESSING_VERSION

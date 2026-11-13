@@ -19,6 +19,8 @@ const sourceOptions = [
 
 export function NewClassificationRun({ onCreated, onBack }: { onCreated: (id: string) => void; onBack: () => void }) {
   const [data, setData] = useState<{ total: number; classes: { category: string; title: string; count: number }[] }>({ total: 0, classes: [] })
+  const [datasets,setDatasets]=useState<{id:number;name:string;total:number}[]>([])
+  const [datasetId,setDatasetId]=useState('1')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [classes, setClasses] = useState(allClasses)
@@ -38,12 +40,17 @@ export function NewClassificationRun({ onCreated, onBack }: { onCreated: (id: st
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/classification/dataset', { signal: controller.signal })
+    setLoading(true)
+    setError('')
+    setData({total:0,classes:[]})
+    fetch(`/api/classification/dataset?dataset_id=${datasetId}`, { signal: controller.signal })
       .then(async response => { if (!response.ok) throw new Error(response.status === 401 ? 'Bitte erneut anmelden.' : 'Daten konnten nicht geladen werden.'); return response.json() })
       .then(setData).catch(e => { if (e.name !== 'AbortError') setError(e.message) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [])
+  }, [datasetId])
+
+  useEffect(()=>{fetch('/api/moneta/datasets').then(async response=>{if(!response.ok)throw new Error('Datensätze konnten nicht geladen werden.');return response.json()}).then(value=>setDatasets(value.items)).catch(e=>setError(e.message))},[])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -57,7 +64,7 @@ export function NewClassificationRun({ onCreated, onBack }: { onCreated: (id: st
   async function start() {
     setSaving(true); setError('')
     try {
-      const response = await fetch('/api/classification/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, model, method, prompt_config: promptConfig, selection: { count: amount, classes }, sources }) })
+      const response = await fetch('/api/classification/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataset_id:Number(datasetId), name, model, method, prompt_config: promptConfig, selection: { count: amount, classes }, sources }) })
       const body = await response.json()
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Lauf konnte nicht angelegt werden.')
       onCreated(body.id)
@@ -85,7 +92,7 @@ export function NewClassificationRun({ onCreated, onBack }: { onCreated: (id: st
           </FieldGroup>
           <Separator />
           <section className="flex flex-col gap-4" aria-labelledby="dataset-heading"><div className="flex items-center justify-between gap-3"><h2 id="dataset-heading" className="text-sm font-semibold">Datenauswahl</h2><span className="text-xs text-muted-foreground">{loading ? 'Lädt …' : `${available} Treffer`}</span></div>
-            <FieldGroup className="grid gap-5 sm:grid-cols-[140px_minmax(0,1fr)]"><Field><FieldLabel htmlFor="dataset-count">Anzahl gesamt</FieldLabel><Input id="dataset-count" type="number" min={1} max={Math.min(1000, available)} step={1} value={count} disabled={saving || loading} aria-invalid={!loading && !validSelection} onChange={e => setCount(e.target.value)} /><p className="text-xs text-muted-foreground">Max. {Math.min(1000, available)}</p></Field>
+            <Field><FieldLabel htmlFor="run-dataset">Datensatz</FieldLabel><Select value={datasetId} disabled={saving} onValueChange={setDatasetId}><SelectTrigger id="run-dataset"><SelectValue/></SelectTrigger><SelectContent><SelectGroup>{datasets.map(dataset=><SelectItem key={dataset.id} value={String(dataset.id)}>{dataset.name} · {dataset.total} Datenpunkte</SelectItem>)}</SelectGroup></SelectContent></Select></Field><FieldGroup className="grid gap-5 sm:grid-cols-[140px_minmax(0,1fr)]"><Field><FieldLabel htmlFor="dataset-count">Anzahl gesamt</FieldLabel><Input id="dataset-count" type="number" min={1} max={Math.min(1000, available)} step={1} value={count} disabled={saving || loading} aria-invalid={!loading && !validSelection} onChange={e => setCount(e.target.value)} /><p className="text-xs text-muted-foreground">Max. {Math.min(1000, available)}</p></Field>
               <Field><FieldLabel htmlFor="dataset-classes">NACE-Klassen</FieldLabel>
           <DropdownMenu><DropdownMenuTrigger asChild><Button id="dataset-classes" variant="outline" className="w-full justify-between" disabled={saving || loading}><span className="truncate">{loading ? 'Klassen werden geladen …' : classes.length === allClasses.length ? 'Alle Klassen' : !classes.length ? 'Klassen auswählen' : classes.length <= 4 ? classes.slice().sort().join(', ') : `${classes.length} Klassen ausgewählt`}</span><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-80 w-[min(28rem,calc(100vw-2rem))] overflow-y-auto">
@@ -104,7 +111,7 @@ export function NewClassificationRun({ onCreated, onBack }: { onCreated: (id: st
           <section className="flex flex-col gap-4" aria-labelledby="sources-heading"><div className="flex items-center justify-between gap-3"><h2 id="sources-heading" className="text-sm font-semibold">Quellen</h2>{isJev && <span className="text-xs text-muted-foreground">Jev: Bilder experimentell</span>}{method === 'multi_turn' && <span className="text-xs text-muted-foreground">Multi-Turn: alle verfügbaren</span>}</div><FieldGroup className="gap-0 divide-y">{sourceOptions.map(({ id, label, description, icon: Icon }) => <Field key={id} orientation="horizontal" className="py-3 first:pt-0 last:pb-0"><Icon className="size-4 shrink-0 text-muted-foreground" /><div className="flex-1"><FieldLabel htmlFor={`source-${id}`}>{label}</FieldLabel>{description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}</div><Switch id={`source-${id}`} disabled={running || method === 'multi_turn'} checked={sources[id]} onCheckedChange={checked => setSources(previous => ({ ...previous, [id]:checked }))} /></Field>)}</FieldGroup></section>
         </CardContent>
       </Card>
-      <Card className="gap-5 shadow-none lg:sticky lg:top-6"><CardHeader><CardTitle>Zusammenfassung</CardTitle><CardDescription className="truncate">{name.trim() || 'Neuer Lauf'}</CardDescription></CardHeader><CardContent className="flex flex-col gap-5"><div><span className="text-4xl font-semibold tracking-tight tabular-nums">{validSelection ? amount : '–'}</span><p className="mt-1 text-sm text-muted-foreground">Datenpunkte</p></div><Separator /><dl className="flex flex-col gap-3 text-sm">{[['Modell',modelName],['Verfahren',method === 'multi_turn' ? 'Multi-Turn' : 'Zero-Shot'],['Prompt',promptConfig],['Klassen',classLabel],['Modellaufrufe',validSelection ? method === 'multi_turn' ? `max. ${amount * 6}` : String(amount) : '–']].map(([label,value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="text-right">{value}</dd></div>)}</dl><Separator /><Button className="w-full" disabled={saving || !name.trim() || !validSelection} onClick={start}>{saving ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Plus data-icon="inline-start" />}{saving ? 'Wird angelegt …' : 'Lauf anlegen'}</Button><p className="text-xs leading-relaxed text-muted-foreground">Anlegen ist kostenlos. API-Kosten entstehen beim Start.</p>{model === 'gpt-5-mini' && <p className="text-xs text-muted-foreground">OpenAI stellt GPT-5 Mini am 11.12.2026 ein.</p>}</CardContent></Card>
+      <Card className="gap-5 shadow-none lg:sticky lg:top-6"><CardHeader><CardTitle>Zusammenfassung</CardTitle><CardDescription className="truncate">{name.trim() || 'Neuer Lauf'}</CardDescription></CardHeader><CardContent className="flex flex-col gap-5"><div><span className="text-4xl font-semibold tracking-tight tabular-nums">{validSelection ? amount : '–'}</span><p className="mt-1 text-sm text-muted-foreground">Datenpunkte</p></div><Separator /><dl className="flex flex-col gap-3 text-sm">{[['Datensatz',datasets.find(dataset=>String(dataset.id)===datasetId)?.name??'–'],['Modell',modelName],['Verfahren',method === 'multi_turn' ? 'Multi-Turn' : 'Zero-Shot'],['Prompt',promptConfig],['Klassen',classLabel],['Modellaufrufe',validSelection ? method === 'multi_turn' ? `max. ${amount * 6}` : String(amount) : '–']].map(([label,value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="text-right">{value}</dd></div>)}</dl><Separator /><Button className="w-full" disabled={saving || !name.trim() || !validSelection} onClick={start}>{saving ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Plus data-icon="inline-start" />}{saving ? 'Wird angelegt …' : 'Lauf anlegen'}</Button><p className="text-xs leading-relaxed text-muted-foreground">Anlegen ist kostenlos. API-Kosten entstehen beim Start.</p>{model === 'gpt-5-mini' && <p className="text-xs text-muted-foreground">OpenAI stellt GPT-5 Mini am 11.12.2026 ein.</p>}</CardContent></Card>
     </div>
   </div>
 }

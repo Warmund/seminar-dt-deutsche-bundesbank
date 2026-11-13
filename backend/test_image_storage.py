@@ -41,7 +41,7 @@ def test_migration_only_clears_database_bytes_after_verification(monkeypatch):
                 self.pending = False
             return self
         def fetchone(self):
-            return {'osm_type': 'way', 'osm_id': 1, 'kind': 'osm', 'content': b'png'} if self.pending else None
+            return {'dataset_id': 1, 'osm_type': 'way', 'osm_id': 1, 'kind': 'osm', 'content': b'png'} if self.pending else None
         def commit(self): events.append('commit')
     monkeypatch.setattr(migrate_images.psycopg, 'connect', lambda *a, **kw: Connection())
     monkeypatch.setattr(image_storage, 'save_image', lambda *a: 'image-key')

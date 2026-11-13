@@ -50,6 +50,7 @@ def test_import_and_image_lifecycle(monkeypatch):
         with psycopg.connect(url) as c:
             c.execute(f'SET LOCAL search_path TO {schema}')
             c.execute(Path(__file__).with_name('schema.sql').read_text())
+            c.execute("INSERT INTO app_users(username,password_hash) VALUES('tester','unused')")
         app.dependency_overrides[database] = db
         app.dependency_overrides[current_user] = lambda: {'id': 1, 'username': 'tester'}
         with TestClient(app, headers={'Origin': 'http://localhost:5173'}) as client:
@@ -74,6 +75,30 @@ def test_import_and_image_lifecycle(monkeypatch):
             assert client.get('/api/moneta/records').json()['items'][0]['satellite'] is True
             assert client.get('/api/moneta/records/way/123').json()['website'] == 'https://example.org'
             assert client.put('/api/moneta/records/node/999/images/osm', content=png.getvalue()).status_code == 404
+            created=client.post('/api/moneta/datasets',json={'name':'Second dataset'})
+            assert created.status_code==201
+            dataset_id=created.json()['id']
+            assert client.post('/api/moneta/datasets',json={'name':'Second dataset'}).status_code==409
+            other=sample()|{'category':'B','tags':{'name':'Other company','website':'Other text'}}
+            assert client.post(f'/api/moneta/records?dataset_id={dataset_id}',json=other).status_code==200
+            second=client.get(f'/api/moneta/records?dataset_id={dataset_id}').json()
+            assert second['total']==1 and second['items'][0]['name']=='Other company'
+            assert not second['items'][0]['satellite']
+            assert client.get('/api/moneta/records').json()['items'][0]['name']=='Updated'
+            assert client.get('/api/moneta/records').json()['items'][0]['satellite']
+            assert client.get(f'{path}?dataset_id={dataset_id}',follow_redirects=False).status_code==404
+            monkeypatch.setattr(image_storage,'save_image',lambda *args:'test/second.png')
+            assert client.put(f'{path}?dataset_id={dataset_id}',content=png.getvalue()).status_code==200
+            assert client.get(f'{path}?dataset_id={dataset_id}',follow_redirects=False).headers['location']=='https://storage.example/test/second.png'
+            assert client.get(path,follow_redirects=False).headers['location']=='https://storage.example/test/image.png'
+            assert client.get(f'/api/classification/dataset?dataset_id={dataset_id}').json()['total']==1
+            payload={'name':'Other run','dataset_id':dataset_id,'model':'gpt-6-luna','sources':{'text':True,'osm':False,'satellite':False},'selection':{'count':1,'classes':['B']}}
+            new_run=client.post('/api/classification/runs',json=payload)
+            assert new_run.status_code==201,new_run.text
+            run=client.get('/api/classification/runs/'+new_run.json()['id']).json()
+            assert run['selection']['dataset_name']=='Second dataset'
+            assert run['items'][0]['name']=='Other company' and run['items'][0]['reference']=='B'
+            assert client.get('/api/moneta/datasets').json()['items'][0]['name']=='MONETA-1000'
             assert client.put(path, content=b'bad').status_code == 422
             assert client.put(path, content=b'x' * 3_000_001).status_code == 413
             assert client.post('/api/moneta/records', headers={'Origin': 'https://evil.example'}, json=sample()).status_code == 403

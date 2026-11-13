@@ -61,9 +61,9 @@ def review(run_id: uuid.UUID, connection: Connection, user=Depends(current_user)
     run=accessible_run(connection,run_id,user)
     settings=connection.execute('SELECT * FROM review_sessions WHERE run_id=%s',(run_id,)).fetchone()
     if not settings: return {'settings':None,'items':[]}
-    items=connection.execute("SELECT i.position,i.osm_type,i.osm_id,i.name,i.result,i.clues,i.snapshot,m.data->'tags' AS tags,e.initial_code,e.initial_cert,e.revealed_at,e.final_code,e.certainty,e.comment,e.status,e.messages,e.started_at,e.updated_at FROM classification_run_items i LEFT JOIN moneta_records m ON m.osm_type=i.osm_type AND m.osm_id::text=i.osm_id LEFT JOIN review_entries e ON e.run_id=i.run_id AND e.position=i.position AND e.user_id=%s WHERE i.run_id=%s AND i.state='done' AND (%s::integer IS NULL OR i.position=%s) ORDER BY i.position",(user['id'],run_id,position,position)).fetchall()
+    items=connection.execute("SELECT i.position,i.osm_type,i.osm_id,i.name,i.result,i.clues,i.snapshot,m.data->'tags' AS tags,e.initial_code,e.initial_cert,e.revealed_at,e.final_code,e.certainty,e.comment,e.status,e.messages,e.started_at,e.updated_at FROM classification_run_items i LEFT JOIN moneta_records m ON m.dataset_id=(SELECT dataset_id FROM classification_runs WHERE id=i.run_id) AND m.osm_type=i.osm_type AND m.osm_id::text=i.osm_id LEFT JOIN review_entries e ON e.run_id=i.run_id AND e.position=i.position AND e.user_id=%s WHERE i.run_id=%s AND i.state='done' AND (%s::integer IS NULL OR i.position=%s) ORDER BY i.position",(user['id'],run_id,position,position)).fetchall()
     for item in items:
-        item['tags']=item.get('tags') or {}
+        item['tags']=item['snapshot'].get('tags',item.get('tags') or {})
         item['requires_review']=required(item,settings)
         if settings['variant']=='B' and not item['revealed_at']:
             item['result']=None

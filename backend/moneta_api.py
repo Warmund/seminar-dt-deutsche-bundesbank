@@ -20,6 +20,23 @@ Read = [Depends(current_user)]
 Write = [Depends(current_user), Depends(origin_check)]
 
 
+class NewDataset(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    name: str = Field(min_length=1,max_length=150)
+
+@app.get('/api/moneta/datasets', dependencies=Read)
+def datasets(connection:Connection):
+    return {'items':connection.execute('SELECT d.id,d.name,d.created_at,count(r.osm_id) AS total FROM moneta_datasets d LEFT JOIN moneta_records r ON r.dataset_id=d.id GROUP BY d.id ORDER BY d.id').fetchall()}
+
+@app.post('/api/moneta/datasets', dependencies=Write, status_code=201)
+def new_dataset(data:NewDataset,connection:Connection):
+    row=connection.execute('INSERT INTO moneta_datasets(name) VALUES(%s) ON CONFLICT(name) DO NOTHING RETURNING id,name',(data.name,)).fetchone()
+    if not row:raise HTTPException(409,'Dieser Datensatzname ist bereits vergeben. Bitte den vorhandenen Datensatz als Importziel wählen.')
+    return row
+
+def ensure_dataset(connection,dataset_id):
+    if not connection.execute('SELECT 1 FROM moneta_datasets WHERE id=%s',(dataset_id,)).fetchone():raise HTTPException(404,'Datensatz nicht gefunden.')
+
 class Record(BaseModel):
     model_config = ConfigDict(extra='allow', allow_inf_nan=False)
     id: Annotated[int, Field(strict=True, gt=0, le=9223372036854775807)]
@@ -89,7 +106,8 @@ def verify_png(body: bytes):
 
 
 @app.post('/api/moneta/records', dependencies=Write)
-async def import_record(request: Request, connection: Connection):
+async def import_record(request: Request, connection: Connection, dataset_id: Annotated[int,Query(ge=1)] = 1):
+    ensure_dataset(connection,dataset_id)
     try:
         raw = json.loads(await bounded_body(request), parse_constant=reject_constant)
         raw, removed = clean_text(raw)
@@ -99,18 +117,18 @@ async def import_record(request: Request, connection: Connection):
     tags = record.tags if record.tags is not None else record.osm_tags
     name = str(tags.get('name') or record.name).strip()
     connection.execute(
-        'INSERT INTO moneta_records (osm_type, osm_id, name, category, data) VALUES (%s,%s,%s,%s,%s) '
-        'ON CONFLICT (osm_type, osm_id) DO UPDATE SET name=EXCLUDED.name, category=EXCLUDED.category, data=EXCLUDED.data, updated_at=now()',
-        (record.type, record.id, name, record.category, Jsonb(raw)),
+        'INSERT INTO moneta_records (dataset_id, osm_type, osm_id, name, category, data) VALUES (%s,%s,%s,%s,%s,%s) '
+        'ON CONFLICT (dataset_id, osm_type, osm_id) DO UPDATE SET name=EXCLUDED.name, category=EXCLUDED.category, data=EXCLUDED.data, updated_at=now()',
+        (dataset_id, record.type, record.id, name, record.category, Jsonb(raw)),
     )
     return {'key': f'{record.type}_{record.id}', 'removed_null_characters': removed}
 
 
 @app.put('/api/moneta/records/{osm_type}/{osm_id}/images/{kind}', dependencies=Write)
-async def upload_image(osm_type: Literal['node', 'way', 'relation'], osm_id: int, kind: Literal['osm', 'satellite'], request: Request, connection: Connection):
+async def upload_image(osm_type: Literal['node', 'way', 'relation'], osm_id: int, kind: Literal['osm', 'satellite'], request: Request, connection: Connection, dataset_id: Annotated[int,Query(ge=1)] = 1):
     body = await bounded_body(request)
     verify_png(body)
-    if not connection.execute('SELECT 1 FROM moneta_records WHERE osm_type=%s AND osm_id=%s', (osm_type, osm_id)).fetchone():
+    if not connection.execute('SELECT 1 FROM moneta_records WHERE dataset_id=%s AND osm_type=%s AND osm_id=%s', (dataset_id, osm_type, osm_id)).fetchone():
         raise HTTPException(404, 'Zuerst den zugehörigen JSON-Datenpunkt importieren')
     if not image_storage.configured():
         raise HTTPException(503, 'Der Bildspeicher ist noch nicht eingerichtet. Bitte später erneut versuchen.')
@@ -119,38 +137,38 @@ async def upload_image(osm_type: Literal['node', 'way', 'relation'], osm_id: int
     except (BotoCoreError, ClientError) as exc:
         raise HTTPException(503, 'Bildspeicher nicht erreichbar; Upload bitte erneut versuchen') from exc
     connection.execute(
-        'INSERT INTO moneta_images (osm_type, osm_id, kind, object_key, content) VALUES (%s,%s,%s,%s,NULL) '
-        'ON CONFLICT (osm_type, osm_id, kind) DO UPDATE SET object_key=EXCLUDED.object_key, content=NULL, updated_at=now()',
-        (osm_type, osm_id, kind, key),
+        'INSERT INTO moneta_images (dataset_id, osm_type, osm_id, kind, object_key, content) VALUES (%s,%s,%s,%s,%s,NULL) '
+        'ON CONFLICT (dataset_id, osm_type, osm_id, kind) DO UPDATE SET object_key=EXCLUDED.object_key, content=NULL, updated_at=now()',
+        (dataset_id, osm_type, osm_id, kind, key),
     )
     return {'ok': True}
 
 
 @app.get('/api/moneta/records', dependencies=Read)
-def list_records(connection: Connection, q: str = Query('', max_length=200), offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100)):
+def list_records(connection: Connection, q: str = Query('', max_length=200), offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), dataset_id: Annotated[int,Query(ge=1)] = 1):
     pattern = '%' + q + '%'
-    count = connection.execute('SELECT count(*) AS total FROM moneta_records WHERE name ILIKE %s OR category ILIKE %s OR osm_id::text ILIKE %s', (pattern, pattern, pattern)).fetchone()['total']
+    count = connection.execute('SELECT count(*) AS total FROM moneta_records WHERE dataset_id=%s AND (name ILIKE %s OR category ILIKE %s OR osm_id::text ILIKE %s)', (dataset_id, pattern, pattern, pattern)).fetchone()['total']
     rows = connection.execute(
         'SELECT r.osm_type, r.osm_id::text AS osm_id, r.name, r.category, r.updated_at, '
-        "EXISTS(SELECT 1 FROM moneta_images i WHERE i.osm_type=r.osm_type AND i.osm_id=r.osm_id AND kind='osm') AS osm, "
-        "EXISTS(SELECT 1 FROM moneta_images i WHERE i.osm_type=r.osm_type AND i.osm_id=r.osm_id AND kind='satellite') AS satellite "
-        'FROM moneta_records r WHERE name ILIKE %s OR category ILIKE %s OR osm_id::text ILIKE %s ORDER BY r.osm_type,r.osm_id LIMIT %s OFFSET %s',
-        (pattern, pattern, pattern, limit, offset),
+        "EXISTS(SELECT 1 FROM moneta_images i WHERE i.dataset_id=r.dataset_id AND i.osm_type=r.osm_type AND i.osm_id=r.osm_id AND kind='osm') AS osm, "
+        "EXISTS(SELECT 1 FROM moneta_images i WHERE i.dataset_id=r.dataset_id AND i.osm_type=r.osm_type AND i.osm_id=r.osm_id AND kind='satellite') AS satellite "
+        'FROM moneta_records r WHERE dataset_id=%s AND (name ILIKE %s OR category ILIKE %s OR osm_id::text ILIKE %s) ORDER BY r.osm_type,r.osm_id LIMIT %s OFFSET %s',
+        (dataset_id, pattern, pattern, pattern, limit, offset),
     ).fetchall()
     return {'total': count, 'items': rows}
 
 
 @app.get('/api/moneta/records/{osm_type}/{osm_id}', dependencies=Read)
-def detail(osm_type: str, osm_id: int, connection: Connection):
-    row = connection.execute('SELECT data FROM moneta_records WHERE osm_type=%s AND osm_id=%s', (osm_type, osm_id)).fetchone()
+def detail(osm_type: str, osm_id: int, connection: Connection, dataset_id: Annotated[int,Query(ge=1)] = 1):
+    row = connection.execute('SELECT data FROM moneta_records WHERE dataset_id=%s AND osm_type=%s AND osm_id=%s', (dataset_id, osm_type, osm_id)).fetchone()
     if not row:
         raise HTTPException(404, 'Datenpunkt nicht gefunden')
     return row['data']
 
 
 @app.get('/api/moneta/records/{osm_type}/{osm_id}/images/{kind}', dependencies=Read)
-def image(osm_type: str, osm_id: int, kind: Literal['osm', 'satellite'], connection: Connection):
-    row = connection.execute('SELECT content, object_key FROM moneta_images WHERE osm_type=%s AND osm_id=%s AND kind=%s', (osm_type, osm_id, kind)).fetchone()
+def image(osm_type: str, osm_id: int, kind: Literal['osm', 'satellite'], connection: Connection, dataset_id: Annotated[int,Query(ge=1)] = 1):
+    row = connection.execute('SELECT content, object_key FROM moneta_images WHERE dataset_id=%s AND osm_type=%s AND osm_id=%s AND kind=%s', (dataset_id, osm_type, osm_id, kind)).fetchone()
     if not row:
         raise HTTPException(404, 'Bild nicht vorhanden')
     if row['object_key']:

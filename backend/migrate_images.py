@@ -17,13 +17,13 @@ def migrate():
     with psycopg.connect(os.environ['DATABASE_URL'], row_factory=dict_row) as connection:
         while True:
             # Lock one image at a time: concurrent uploads cannot change this row mid-migration.
-            row = connection.execute('SELECT osm_type, osm_id, kind, content FROM public.moneta_images WHERE content IS NOT NULL ORDER BY osm_type, osm_id, kind LIMIT 1 FOR UPDATE').fetchone()
+            row = connection.execute('SELECT dataset_id, osm_type, osm_id, kind, content FROM public.moneta_images WHERE content IS NOT NULL ORDER BY osm_type, osm_id, kind LIMIT 1 FOR UPDATE').fetchone()
             if not row:
                 break
             body = bytes(row['content'])
             key = image_storage.save_image(row['osm_type'], row['osm_id'], row['kind'], body)
             image_storage.verify_image(key, body)
-            connection.execute('UPDATE public.moneta_images SET object_key=%s, content=NULL WHERE osm_type=%s AND osm_id=%s AND kind=%s', (key, row['osm_type'], row['osm_id'], row['kind']))
+            connection.execute('UPDATE public.moneta_images SET object_key=%s, content=NULL WHERE dataset_id=%s AND osm_type=%s AND osm_id=%s AND kind=%s', (key, row['dataset_id'], row['osm_type'], row['osm_id'], row['kind']))
             connection.commit()
             migrated += 1
             print(f'{migrated} Bilder übertragen und geprüft', flush=True)

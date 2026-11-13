@@ -91,8 +91,8 @@ export function comparisonStats(runs: { model: string; setup: string; items: Ite
 
 export type PlotDataset = { id: string; label: string; model: string; setup: string; items: Item[] }
 
-export function plotDataset(body: { id: string; name: string; model: string; method?: string; prompt_config?: string; sources?: Record<string, boolean> }, items: Item[]): PlotDataset {
+export function plotDataset(body: { id: string; name: string; model: string; method?: string; prompt_config?: string; selection?: { dataset_name?: string }; sources?: Record<string, boolean> }, items: Item[]): PlotDataset {
   const sources = body.sources ? Object.entries(body.sources).filter(([, enabled]) => enabled).map(([key]) => ({ text: 'Text', osm: 'OSM', satellite: 'Satellit' }[key] ?? key)).join(' + ') || 'Nur Name' : 'Quellen unbekannt'
-  const setup = [sources, body.method === 'multi_turn' ? 'Multi-Turn' : body.method === 'zero_shot' ? 'Zero-Shot' : body.method, body.prompt_config].filter(Boolean).join(' · ')
+  const setup = [body.selection?.dataset_name ?? 'MONETA-1000', sources, body.method === 'multi_turn' ? 'Multi-Turn' : body.method === 'zero_shot' ? 'Zero-Shot' : body.method, body.prompt_config].filter(Boolean).join(' · ')
   return { id: body.id, label: body.name, model: body.model, setup, items }
 }
