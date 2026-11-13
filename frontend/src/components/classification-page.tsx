@@ -29,7 +29,7 @@ export function NewClassificationRun({ onCreated, onBack }: { onCreated: (id: st
   const [promptConfig, setPromptConfig] = useState('Simple')
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
-  const [config, setConfig] = useState<{ configured: boolean; model: string; opencode_configured: boolean; vercel_configured: boolean; jev_model: string } | null>(null)
+  const [config, setConfig] = useState<{ configured: boolean; model: string; opencode_configured: boolean; vercel_configured: boolean; uni_mainz_configured: boolean; uni_mainz_models: {id: string; name: string}[]; uni_mainz_error: string | null; jev_model: string } | null>(null)
   const [configError, setConfigError] = useState('')
   const running = saving
   const available = data.classes.filter(item => classes.includes(item.category)).reduce((sum, item) => sum + item.count, 0)
@@ -67,20 +67,21 @@ export function NewClassificationRun({ onCreated, onBack }: { onCreated: (id: st
 
   const isJev = model.startsWith('jev-')
   const isDecider = model === 'perplexity/pplx-decider-v1.2'
+  const isMainz = model.startsWith('uni-mainz/')
   const isDecision = isJev || isDecider
-  const providerReady = isJev ? config?.opencode_configured : isDecider ? config?.vercel_configured : config?.configured
-  const modelName = isDecider ? 'Perplexity Decider V1.2' : isJev ? model.endsWith('-free') ? 'Jev 1.13 Free' : 'Jev 1.13' : model === 'gpt-5-mini' ? 'GPT-5 Mini' : model === 'gpt-6.1-terra' ? 'GPT-6.1 Terra' : 'GPT-6 Luna'
+  const providerReady = isJev ? config?.opencode_configured : isDecider ? config?.vercel_configured : isMainz ? config?.uni_mainz_configured : config?.configured
+  const modelName = isMainz ? config?.uni_mainz_models?.find(item => item.id === model)?.name ?? model.slice('uni-mainz/'.length) + ' (UNI-MAINZ)' : isDecider ? 'Perplexity Decider V1.2' : isJev ? model.endsWith('-free') ? 'Jev 1.13 Free' : 'Jev 1.13' : model === 'gpt-5-mini' ? 'GPT-5 Mini' : model === 'gpt-6.1-terra' ? 'GPT-6.1 Terra' : 'GPT-6 Luna'
   const classLabel = classes.length === 21 ? 'Alle Klassen' : !classes.length ? 'Keine Klassen' : classes.length <= 4 ? classes.slice().sort().join(', ') : `${classes.length} Klassen`
   return <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 lg:p-8">
     <div className="flex items-center gap-3"><Button size="icon" variant="outline" aria-label="Zur Laufübersicht" onClick={onBack}><ArrowLeft /></Button><h1 className="text-xl font-semibold tracking-tight">Neuer Lauf</h1></div>
-    {(error || configError || config && !providerReady) && <Alert variant="destructive"><AlertDescription>{error || configError || (isJev ? 'OpenCode-Key fehlt im Backend.' : isDecider ? 'Vercel-AI-Gateway-Key fehlt im Backend.' : 'OpenAI-Key fehlt im Backend.')}</AlertDescription></Alert>}
+    {(error || configError || config && !providerReady) && <Alert variant="destructive"><AlertDescription>{error || configError || (isJev ? 'OpenCode-Key fehlt im Backend.' : isDecider ? 'Vercel-AI-Gateway-Key fehlt im Backend.' : isMainz ? 'Uni-Mainz-Key fehlt im Backend.' : 'OpenAI-Key fehlt im Backend.')}</AlertDescription></Alert>}
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
       <Card className="gap-0 overflow-hidden shadow-none">
         <CardHeader className="pb-6"><CardTitle>Lauf konfigurieren</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-7">
           <FieldGroup className="grid gap-5 sm:grid-cols-2">
             <Field><FieldLabel htmlFor="run-name">Name</FieldLabel><Input id="run-name" value={name} maxLength={150} placeholder="z. B. Baseline 01" disabled={saving} onChange={e => setName(e.target.value)} /></Field>
-            <Field><FieldLabel htmlFor="run-model">Modell</FieldLabel><Select value={model} onValueChange={value => { setModel(value); if (value.startsWith('jev-') || value === 'perplexity/pplx-decider-v1.2') setMethod('zero_shot') }} disabled={saving}><SelectTrigger id="run-model" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="perplexity/pplx-decider-v1.2">Perplexity Decider V1.2 · Vercel</SelectItem><SelectItem value="gpt-5-mini">GPT-5 Mini</SelectItem><SelectItem value="gpt-6-luna">GPT-6 Luna</SelectItem><SelectItem value="gpt-6.1-terra">GPT-6.1 Terra</SelectItem><SelectItem value={config?.jev_model === 'jev-1.13-free' ? 'jev-1.13-free' : 'jev-1.13'}>{config?.jev_model === 'jev-1.13-free' ? 'Jev 1.13 Free' : 'Jev 1.13'} · OpenCode</SelectItem></SelectGroup></SelectContent></Select></Field>
+            <Field><FieldLabel htmlFor="run-model">Modell</FieldLabel><Select value={model} onValueChange={value => { setModel(value); if (value.startsWith('jev-') || value === 'perplexity/pplx-decider-v1.2') setMethod('zero_shot') }} disabled={saving}><SelectTrigger id="run-model" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{config?.uni_mainz_models?.map(item => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}{config && !config.uni_mainz_models?.length && <SelectItem value="uni-mainz-unavailable" disabled>UNI-MAINZ · nicht verfügbar</SelectItem>}<SelectItem value="perplexity/pplx-decider-v1.2">Perplexity Decider V1.2 · Vercel</SelectItem><SelectItem value="gpt-5-mini">GPT-5 Mini</SelectItem><SelectItem value="gpt-6-luna">GPT-6 Luna</SelectItem><SelectItem value="gpt-6.1-terra">GPT-6.1 Terra</SelectItem><SelectItem value={config?.jev_model === 'jev-1.13-free' ? 'jev-1.13-free' : 'jev-1.13'}>{config?.jev_model === 'jev-1.13-free' ? 'Jev 1.13 Free' : 'Jev 1.13'} · OpenCode</SelectItem></SelectGroup></SelectContent></Select>{config?.uni_mainz_error && <p className="text-xs text-muted-foreground">{config.uni_mainz_error}</p>}</Field>
           </FieldGroup>
           <Separator />
           <section className="flex flex-col gap-4" aria-labelledby="dataset-heading"><div className="flex items-center justify-between gap-3"><h2 id="dataset-heading" className="text-sm font-semibold">Datenauswahl</h2><span className="text-xs text-muted-foreground">{loading ? 'Lädt …' : `${available} Treffer`}</span></div>

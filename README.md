@@ -205,3 +205,7 @@ Die Seite zeigt Accuracy, ECE über zehn gleich breite Intervalle und AUROC zur 
 ### Perplexity Decider über Vercel AI Gateway
 
 `VERCEL_API_KEY` in der lokalen `.env` und als Secret im Vercel-Backend-Projekt setzen. `perplexity/pplx-decider-v1.2` wird über die TypeSafe-kompatible AI-Gateway-Schnittstelle als Zero-Shot-Klassifikator mit denselben NACE-Kriterien wie Jev aufgerufen. Bilder werden als PNG-Daten eingebettet und auf höchstens 1400 × 1400 Pixel verkleinert. Der vom Anbieter berechnete `confidence`-Wert beschreibt die Konzentration der Klassenverteilung; er ist keine direkte Trefferwahrscheinlichkeit. Die Rohwahrscheinlichkeiten und Konfidenzmethode werden gespeichert.
+
+### Uni Mainz
+
+`UNI_MAINZ_API_KEY` in der lokalen `.env` und als Secret im Vercel-Backend setzen. Die Modellauswahl lädt die aktuell verfügbaren DeepSeek- und Qwen-Chatmodelle über das Modellverzeichnis der Universität. Zero-Shot und Multi-Turn verwenden die Uni-Mainz-Chat-API; Bilder werden als Daten übermittelt. Modelle und Verfügbarkeit können sich ändern. Kosten werden nicht geschätzt, solange kein verbindlicher Tarif hinterlegt ist.

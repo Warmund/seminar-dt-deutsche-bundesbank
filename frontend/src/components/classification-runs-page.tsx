@@ -16,7 +16,7 @@ type Result = { confidence?: number; probabilities?: Record<string, number>; clu
 type RunItem = { position: number; name: string; osm_type: string; osm_id: string; reference: string; state: string; clues: Record<string, Clue>; result: Result | null; error: string | null; stalled: boolean }
 const methodLabel = (value: string) => value === 'multi_turn' ? 'Multi-Turn' : value === 'legacy' ? 'Zero-Shot (frühere Version)' : 'Zero-Shot'
 type Run = { method: string; prompt_config: string; id: string; name: string; model: string; created_at: string; sources: Record<string, boolean>; total: number; done: number; errors: number; running: number }
-const modelLabel = (value: string) => value === 'perplexity/pplx-decider-v1.2' ? 'Perplexity Decider V1.2' : value.startsWith('jev-') ? `Jev ${value.slice(4)}` : value === 'gpt-5-mini' ? 'GPT-5 Mini' : value === 'gpt-6.1-terra' ? 'GPT-6.1 Terra' : value === 'gpt-6-luna' ? 'GPT-6 Luna' : value
+const modelLabel = (value: string) => value.startsWith('uni-mainz/') ? value.slice('uni-mainz/'.length) + ' (UNI-MAINZ)' : value === 'perplexity/pplx-decider-v1.2' ? 'Perplexity Decider V1.2' : value.startsWith('jev-') ? `Jev ${value.slice(4)}` : value === 'gpt-5-mini' ? 'GPT-5 Mini' : value === 'gpt-6.1-terra' ? 'GPT-6.1 Terra' : value === 'gpt-6-luna' ? 'GPT-6 Luna' : value
 type Detail = Run & { selection: { count?: number; classes?: string[] }; items: RunItem[]; prompt: string; clue_prompts: Record<string, string> }
 const navigate = (path = '') => { window.location.hash = `classification${path ? '/' + path : ''}` }
 const date = (value: string) => new Date(value).toLocaleString('de-DE')

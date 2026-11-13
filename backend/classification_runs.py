@@ -35,7 +35,7 @@ class DatasetSelection(BaseModel):
 
 class NewRun(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
-    model: Literal['perplexity/pplx-decider-v1.2', 'gpt-5-mini', 'gpt-6-luna', 'gpt-6.1-terra', 'jev-1.13', 'jev-1.13-free'] | None = None
+    model: str | None = Field(default=None, max_length=300)
     method: Literal['zero_shot', 'multi_turn'] = 'zero_shot'
     prompt_config: Literal['Simple', 'Extended'] = 'Simple'
     name: str = Field(min_length=1, max_length=150)
@@ -90,7 +90,11 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
     model = data.model or os.environ.get('OPENAI_MODEL','gpt-6-luna')
     if (model.startswith('jev-') or model == 'perplexity/pplx-decider-v1.2') and data.method != 'zero_shot':
         raise HTTPException(422,'Das Entscheidungsmodell unterstützt nur das direkte Verfahren.')
-    if model not in MODELS:
+    if model.startswith('uni-mainz/'):
+        from uni_mainz import list_models
+        if model not in {item['id'] for item in list_models()}:
+            raise HTTPException(422,'Bitte ein verfügbares Uni-Mainz-Modell auswählen.')
+    elif model not in MODELS:
         raise HTTPException(422,'Bitte ein unterstütztes Modell auswählen.')
     run_id = uuid.uuid4()
     if (model.startswith('jev-') or model == 'perplexity/pplx-decider-v1.2'):

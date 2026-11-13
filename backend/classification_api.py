@@ -77,7 +77,12 @@ def text_features(record):
 
 @app.get('/api/classification/status', dependencies=[Depends(current_user)])
 def status():
-    return {'configured': bool(os.environ.get('OPENAI_API_KEY')), 'model': os.environ.get('OPENAI_MODEL', 'gpt-6-luna'), 'models': MODELS, 'vercel_configured': bool(os.environ.get('VERCEL_API_KEY')), 'opencode_configured': bool(os.environ.get('OPENCODE_API_KEY')), 'jev_model': os.environ.get('OPENCODE_JEV_MODEL','jev-1.13')}
+    from uni_mainz import list_models
+    try:
+        mainz_models, mainz_error = list_models(), None
+    except HTTPException:
+        mainz_models, mainz_error = [], 'Uni-Mainz-Modelle konnten nicht geladen werden.'
+    return {'uni_mainz_models': mainz_models, 'uni_mainz_configured': bool(os.environ.get('UNI_MAINZ_API_KEY')), 'uni_mainz_error': mainz_error, 'configured': bool(os.environ.get('OPENAI_API_KEY')), 'model': os.environ.get('OPENAI_MODEL', 'gpt-6-luna'), 'models': MODELS, 'vercel_configured': bool(os.environ.get('VERCEL_API_KEY')), 'opencode_configured': bool(os.environ.get('OPENCODE_API_KEY')), 'jev_model': os.environ.get('OPENCODE_JEV_MODEL','jev-1.13')}
 
 
 @app.post('/api/classification', dependencies=[Depends(origin_check)])
@@ -131,6 +136,9 @@ def execute_classification(data, connection, user, row=None, images=None, model=
 
 
 def model_call(connection, user, model, prompt, content, clue=False):
+    if model.startswith('uni-mainz/'):
+        from uni_mainz import chat_call
+        return chat_call(connection, model, prompt, content, clue=clue)
     if not os.environ.get('OPENAI_API_KEY'):
         raise HTTPException(503, 'OpenAI-Key ist im Backend noch nicht konfiguriert.')
     try:
