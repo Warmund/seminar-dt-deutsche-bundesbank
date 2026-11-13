@@ -26,6 +26,8 @@ def test_blind_review_and_persistence(monkeypatch):
             c.execute("INSERT INTO app_users(username,password_hash) VALUES('tester','unused')")
             c.execute("INSERT INTO classification_runs(id,user_id,name,model,prompt,sources) VALUES(%s,1,'Test','gpt-5-mini','test','{}')",(run_id,))
             c.execute("INSERT INTO classification_run_items(run_id,position,osm_type,osm_id,name,reference,snapshot,state,result) VALUES(%s,0,'way',1,'Test','G','{}','done',%s)",(run_id,Jsonb({'prediction':{'category':'G'},'confidence':0.7})))
+            for position,reference,prediction,confidence in [(1,'C','G',0.7),(2,'H','H',0.99)]:
+                c.execute("INSERT INTO classification_run_items(run_id,position,osm_type,osm_id,name,reference,snapshot,state,result) VALUES(%s,%s,'way',%s,'Extra',%s,'{}','done',%s)",(run_id,position,position+1,reference,Jsonb({'prediction':{'category':prediction},'confidence':confidence})))
             review.configure(run_id,review.Settings(variant='B'),c,user)
             hidden=review.review(run_id,c,user)['items'][0]
             assert hidden['result'] is None and 'reference' not in hidden
@@ -38,6 +40,19 @@ def test_blind_review_and_persistence(monkeypatch):
             assert review.review(run_id,c,user,position=0)['items'][0]['messages'][0]['answer']=='Gespeicherte Quellen sprechen für G.'
             review.act(run_id,0,review.Action(action='save',code='G',certainty=4,comment='Belege geprüft'),c,user)
             assert review.export(run_id,c,user)['entries'][0]['final_code']=='G'
+            assert not review.review_progress(c,user)['items'][0]['completed']
+            review.act(run_id,1,review.Action(action='defer'),c,user)
+            assert review.review_progress(c,user)['items'][0]['open']==1
+            with pytest.raises(HTTPException):review.evaluation(run_id,1,c,user)
+            review.act(run_id,1,review.Action(action='reveal',code='C',certainty=4),c,user)
+            review.act(run_id,1,review.Action(action='save',code='C',certainty=4),c,user)
+            complete=review.review_progress(c,user)['items'][0]
+            assert complete['completed'] and complete['username']=='tester'
+            metrics=review.evaluation(run_id,1,c,user)['metrics']
+            assert metrics['human_correct']==2 and metrics['fixed']==1 and metrics['overall_correct']==3
+            with pytest.raises(HTTPException):review.act(run_id,0,review.Action(action='save',code='A',certainty=1),c,user)
+            with pytest.raises(HTTPException):review.evaluation(run_id,1,c,{'id':999,'is_admin':False})
+
             assert review.review(run_id,c,{'id':999,'is_admin':False})['items'][0]['result'] is None
             with pytest.raises(HTTPException): review.review(uuid.uuid4(),c,{'id':999,'is_admin':False})
     finally:

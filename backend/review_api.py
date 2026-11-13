@@ -74,7 +74,9 @@ def review(run_id: uuid.UUID, connection: Connection, user=Depends(current_user)
             item['messages']=[]
             item['tags']={}
         # Never disclose the reference classification during review.
-    return {'name':run['name'],'model':run['model'],'settings':settings,'items':[item for item in items if position is None or item['position']==position]}
+    from review_evaluation import progress
+    completed=bool(connection.execute('SELECT 1 FROM review_entries WHERE run_id=%s AND user_id=%s LIMIT 1',(run_id,user['id'])).fetchone()) and progress(participant_rows(connection,run_id,user['id']),lambda row:required(row,settings))['completed']
+    return {'completed':completed,'name':run['name'],'model':run['model'],'settings':settings,'items':[item for item in items if position is None or item['position']==position]}
 
 @app.post('/api/review/{run_id}/{position}', dependencies=[Depends(origin_check)])
 def act(run_id: uuid.UUID, position:int, data:Action, connection:Connection, user=Depends(current_user)):
@@ -83,6 +85,9 @@ def act(run_id: uuid.UUID, position:int, data:Action, connection:Connection, use
     settings=connection.execute('SELECT * FROM review_sessions WHERE run_id=%s',(run_id,)).fetchone()
     item=connection.execute("SELECT * FROM classification_run_items WHERE run_id=%s AND position=%s AND state='done'",(run_id,position)).fetchone()
     if not settings or not item: raise HTTPException(404,'Prüffall nicht gefunden.')
+    from review_evaluation import progress
+    if data.action!='open' and connection.execute('SELECT 1 FROM review_entries WHERE run_id=%s AND user_id=%s LIMIT 1',(run_id,user['id'])).fetchone() and progress(participant_rows(connection,run_id,user['id']),lambda row:required(row,settings))['completed']:
+        raise HTTPException(409,'Diese Prüfung ist abgeschlossen und kann nicht mehr geändert werden.')
     connection.execute('INSERT INTO review_entries(run_id,position,user_id) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',(run_id,position,user['id']))
     entry=connection.execute('SELECT * FROM review_entries WHERE run_id=%s AND position=%s AND user_id=%s FOR UPDATE',(run_id,position,user['id'])).fetchone()
     if data.action=='reveal':
@@ -130,3 +135,40 @@ def review_image(run_id:uuid.UUID,position:int,kind:Literal['osm','satellite'],c
     image=row['snapshot'].get('images',{}).get(kind) if row else None
     if not image or not image.get('object_key'): raise HTTPException(404,'Bild nicht vorhanden.')
     return RedirectResponse(download_url(image['object_key']),status_code=307)
+
+
+def participant_rows(connection,run_id,user_id):
+    return connection.execute('SELECT i.position,i.name,i.state,i.reference,i.result,e.status,e.final_code,e.initial_code,e.certainty,e.comment,e.started_at,e.updated_at FROM classification_run_items i LEFT JOIN review_entries e ON e.run_id=i.run_id AND e.position=i.position AND e.user_id=%s WHERE i.run_id=%s ORDER BY i.position',(user_id,run_id)).fetchall()
+
+@app.get('/api/review-progress')
+def review_progress(connection:Connection,user=Depends(current_user)):
+    from review_evaluation import progress
+    sessions=connection.execute('SELECT s.*,r.name,r.model FROM review_sessions s JOIN classification_runs r ON r.id=s.run_id ORDER BY s.created_at DESC').fetchall()
+    participants=connection.execute('SELECT e.run_id,e.user_id,u.username,min(e.started_at) AS started_at,max(e.updated_at) AS updated_at FROM review_entries e JOIN app_users u ON u.id=e.user_id WHERE (%s OR e.user_id=%s) GROUP BY e.run_id,e.user_id,u.username',(user['is_admin'],user['id'])).fetchall()
+    entries=connection.execute('SELECT run_id,position,user_id,status FROM review_entries WHERE (%s OR user_id=%s)',(user['is_admin'],user['id'])).fetchall()
+    saved={(row['run_id'],row['position'],row['user_id']):row['status'] for row in entries}
+    rows=connection.execute('SELECT run_id,position,state,result FROM classification_run_items WHERE run_id IN (SELECT run_id FROM review_sessions)').fetchall()
+    by_run={}
+    for row in rows:by_run.setdefault(row['run_id'],[]).append(row)
+    result=[]
+    for session in sessions:
+        for participant in participants:
+            if participant['run_id']!=session['run_id']:continue
+            items=[{**row,'status':saved.get((row['run_id'],row['position'],participant['user_id']))} for row in by_run.get(session['run_id'],[])]
+            result.append({**participant,'name':session['name'],'model':session['model'],'variant':session['variant'],**progress(items,lambda item:required(item,session))})
+    return {'items':result}
+
+@app.get('/api/review-evaluation/{run_id}/{participant_id}')
+def evaluation(run_id:uuid.UUID,participant_id:int,connection:Connection,user=Depends(current_user)):
+    from review_evaluation import progress,evaluate
+    if participant_id!=user['id'] and not user['is_admin']:raise HTTPException(403,'Kein Zugriff auf diese Prüfung.')
+    run=accessible_run(connection,run_id,user)
+    settings=connection.execute('SELECT * FROM review_sessions WHERE run_id=%s',(run_id,)).fetchone()
+    participant=connection.execute('SELECT username FROM app_users WHERE id=%s',(participant_id,)).fetchone()
+    started=connection.execute('SELECT 1 FROM review_entries WHERE run_id=%s AND user_id=%s LIMIT 1',(run_id,participant_id)).fetchone()
+    if not settings or not participant or not started:raise HTTPException(404,'Prüfung nicht gefunden.')
+    items=participant_rows(connection,run_id,participant_id)
+    route=lambda item:required(item,settings)
+    if not progress(items,route)['completed']:raise HTTPException(409,'Die Prüfung ist noch nicht abgeschlossen.')
+    return {'name':run['name'],'model':run['model'],'username':participant['username'],'metrics':evaluate(items,route),
+            'items':[{'position':item['position'],'name':item['name'],'reference':item['reference'],'ai':(item['result'] or {}).get('prediction',{}).get('category'),'final_code':item['final_code'],'initial_code':item['initial_code'],'certainty':item['certainty'],'comment':item['comment']} for item in items if route(item)]}
