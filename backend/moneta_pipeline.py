@@ -43,7 +43,7 @@ def source_texts(record, *, for_jev=False):
             # Failed enrichment leaves URL/QID/wiki links. They are not fetched by the classifier.
             if re.fullmatch(r'(https?://|www\.)\S+|Q\d+|[a-z-]{2,12}:[^\n]+',value.strip()):
                 continue
-            prepared = prepare_text(value,kind) if for_jev else value.strip()[:6000]
+            prepared = prepare_text(value,kind) if for_jev else value.strip()
             if prepared:
                 result[kind] = prepared
     return result

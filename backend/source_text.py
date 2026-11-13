@@ -3,16 +3,7 @@ import json
 import re
 import textwrap
 
-VERSION = 'jev-text-v1'
-LIMIT = 6000
-# shortcut: multilingual lexical cues, not semantic extraction; expand only after evaluating held-out texts.
-ACTIVITY = re.compile(
-    r'\b(manufactur\w*|produc\w*|develop\w*|speciali[sz]\w*|suppl\w*|provid\w*|'
-    r'products?|services?|activities|industry|operates?|offers?|sells?|'
-    r'herstell\w*|produzier\w*|fertig\w*|entwick\w*|spezialis\w*|'
-    r'dienstleist\w*|leistungen|produkte|tätigkeit\w*|betreibt|bietet|verkauft|'
-    r'fabric\w*|servicios|activité\w*|prestations|commercialis\w*)\b', re.I)
-DESCRIPTION = re.compile(r'\b(is an?|ist ein\w*|est un\w*|es un\w*)\b', re.I)
+VERSION = 'jev-text-v2'
 COOKIE_NOTICE = re.compile(
     r'\b(this (website|site) uses cookies|we use cookies|wir verwenden cookies|'
     r'diese (website|webseite) verwendet cookies|cookie consent|consent preferences|'
@@ -26,36 +17,14 @@ UI_ONLY = re.compile(
 NAV_WORDS = set('home menu menü navigation search suche kontakt contact login logout anmelden '
                 'startseite impressum datenschutz privacy policy cookies settings einstellungen '
                 'accept reject all alle akzeptieren ablehnen newsletter sitemap'.split())
-# These claim names are copied unchanged; they are prioritized only when the input is Wikidata JSON.
-CLAIM_PRIORITY = {'industry', 'product or material produced', 'products', 'product', 'service',
-                  'services', 'field of work', 'occupation', 'instance of', 'subclass of',
-                  'main subject', 'business model'}
-
-
-def _wikidata(text, limit):
-    try:
-        data = json.loads(text)
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict) or not isinstance(data.get('claims'), dict):
-        return None
-    result = {key: data[key] for key in ('label', 'description') if key in data}
-    if len(json.dumps(result, ensure_ascii=False)) > limit:
-        return text[:limit]
-    result['claims'] = {}
-    ordered = sorted(data['claims'], key=lambda key: key.casefold() not in CLAIM_PRIORITY)
-    for key in ordered:
-        result['claims'][key] = data['claims'][key]
-        if len(json.dumps(result, ensure_ascii=False)) > limit:
-            del result['claims'][key]
-    return json.dumps(result, ensure_ascii=False)
-
-
-def prepare_text(text, kind, limit=LIMIT):
+def prepare_text(text, kind):
     if kind == 'wikidata':
-        structured = _wikidata(text, limit)
-        if structured is not None:
-            return structured
+        try:
+            json.loads(text)
+        except (ValueError, TypeError):
+            pass
+        else:
+            return text.strip()
     normalized = re.sub(r'[^\S\n]+', ' ', text.replace('\r', '\n')).strip()
     units = []
     seen = set()
@@ -71,20 +40,4 @@ def prepare_text(text, kind, limit=LIMIT):
                 continue
             seen.add(signature)
             units.append(unit)
-    if not units:
-        return ''
-    def priority(index):
-        unit = units[index]
-        return min(3, len(ACTIVITY.findall(unit))) * 2 + bool(DESCRIPTION.search(unit)) + (index == 0)
-    selected = []
-    remaining = limit
-    for index in sorted(range(len(units)), key=lambda index: (-priority(index), index)):
-        unit = units[index]
-        cost = len(unit) + bool(selected)
-        if cost <= remaining:
-            selected.append((index, unit))
-            remaining -= cost
-        elif not selected:
-            selected.append((index, unit[:limit]))
-            remaining = 0
-    return '\n'.join(unit for _, unit in sorted(selected))
+    return '\n'.join(units)

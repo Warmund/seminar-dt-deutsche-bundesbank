@@ -30,3 +30,10 @@ def test_zero_shot_is_one_call_and_does_not_send_reference_or_extra_tags(monkeyp
     assert result['missing_sources']==['osm','satellite','wikidata','wikipedia']
     assert result['used_sources']==['website'] and clues=={}
     assert pipeline.source_texts({'tags':{'website':'https://example.org','wikidata':'Q123','wikipedia':'de:Something','shop':'do not use'}})=={}
+
+
+def test_source_texts_preserves_long_sources_for_all_models():
+    text = '\n'.join(f'Source passage {i} contains company information.' for i in range(500))
+    assert len(text) > 6000
+    for for_jev in (False, True):
+        assert pipeline.source_texts({'sources': {'website': text}}, for_jev=for_jev)['website'] == text

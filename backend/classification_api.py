@@ -60,21 +60,18 @@ TAG_KEYS = {'name', 'brand', 'operator', 'shop', 'office', 'amenity', 'craft', '
 
 def text_features(record):
     tags = record.get('tags') or record.get('osm_tags') or {}
-    budget = 24000
     result = {}
     for key in sorted(TAG_KEYS):
         value = tags.get(key)
-        if isinstance(value, str) and value.strip() and budget > 0:
-            result[key] = value[:min(6000, budget)]
-            budget -= len(result[key])
+        if isinstance(value, str) and value.strip():
+            result[key] = value
     # Some exports keep enriched source texts in a separate sources mapping.
     sources = record.get('sources')
     if isinstance(sources, dict):
         for key in ('website', 'wikipedia', 'wikidata'):
             value = sources.get(key)
-            if isinstance(value, str) and budget > 0:
-                result['source:' + key] = value[:min(6000, budget)]
-                budget -= len(result['source:' + key])
+            if isinstance(value, str):
+                result['source:' + key] = value
     return result
 
 

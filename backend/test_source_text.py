@@ -11,7 +11,8 @@ def test_finds_activity_after_original_cutoff_and_removes_repeated_ui():
     result = prepare_text(text,'website')
     assert text.index(activity)>6000
     assert activity in result and result.count(activity)==1
-    assert len(result)<=6000
+    assert len(result)>6000
+    assert 'Archive entry 0 ' in result and 'Archive entry 199 ' in result
     assert 'This website uses cookies' not in result and 'Accept all' not in result
 
 
@@ -26,17 +27,19 @@ def test_preserves_product_cookies_and_unknown_language_content():
 def test_flattened_navigation_does_not_hide_later_business_description():
     text = ('Home Menu Contact Search Login ' * 400) + ' We produce industrial pumps and provide repair services.'
     result=prepare_text(text,'website')
-    assert 'We produce industrial pumps' in ' '.join(result.split()) and len(result)<=6000
+    assert 'We produce industrial pumps' in ' '.join(result.split())
 
 
-def test_wikidata_preserves_json_and_prioritizes_business_claims():
+def test_wikidata_preserves_all_json_fields_and_claims():
     claims={f'unrelated {i}':['x'*300] for i in range(30)}
     claims['industry']=['Manufacturing']
     claims['product or material produced']=['Medical equipment']
     result=prepare_text(json.dumps({'label':'Entity','claims':claims}),'wikidata')
     parsed=json.loads(result)
+    assert parsed == {'label': 'Entity', 'claims': claims}
+    assert len(result) > 6000
     assert parsed['label']=='Entity' and parsed['claims']['industry']==['Manufacturing']
-    assert parsed['claims']['product or material produced']==['Medical equipment'] and len(result)<=6000
+    assert parsed['claims']['product or material produced']==['Medical equipment']
 
 
 def test_selection_preserves_original_order_and_uses_only_source_fragments():

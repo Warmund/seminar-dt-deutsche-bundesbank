@@ -7,11 +7,11 @@ from auth import current_user
 import classification_api as api
 
 
-def test_only_allowed_features_and_bounded_text():
+def test_only_allowed_features_and_complete_text():
     features = api.text_features({'category': 'SECRET', 'history': 'SECRET', 'tags': {'name': 'Shop', 'category': 'SECRET', 'website': 'x' * 50000}, 'sources': {'website': 'y' * 50000}})
     assert 'SECRET' not in str(features)
-    assert sum(map(len, features.values())) <= 24000
-    assert len(features['website']) <= 6000
+    assert features['website'] == 'x' * 50000
+    assert features['source:website'] == 'y' * 50000
 
 
 def test_classification_boundaries_and_reference_separation(monkeypatch):
