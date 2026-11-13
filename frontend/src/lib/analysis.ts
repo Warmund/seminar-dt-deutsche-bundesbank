@@ -47,3 +47,52 @@ export function threshold(items: Item[], t: number) {
   const auto = valid.filter(x => x.prediction !== 'UNK' && x.confidence! >= t)
   return { review: items.length ? (items.length-auto.length)/items.length : null, accuracy: auto.length ? auto.filter(x => x.reference === x.prediction).length/auto.length : null, n: auto.length }
 }
+
+// Threshold groups overlap, matching the cumulative comparisons in the kickoff.
+export function kickoffStats(items: Item[]) {
+  const references = [...new Set(items.map(item => item.reference))].sort()
+  const byClass = references.map(reference => {
+    const group = items.filter(item => item.reference === reference)
+    return { reference, n: group.length, accuracy: group.filter(item => item.prediction === reference).length / group.length * 100 }
+  }).sort((a, b) => a.accuracy - b.accuracy || a.reference.localeCompare(b.reference))
+  const valid = items.filter((item): item is Item & { confidence: number } => item.confidence !== null)
+  const groups = [
+    { label: '<85 %', values: valid.filter(item => item.confidence < 0.85) },
+    ...[85, 90, 95, 98].map(value => ({ label: `≥${value} %`, values: valid.filter(item => item.confidence >= value / 100) })),
+  ].map(({ label, values }) => ({ label, n: values.length, accuracy: values.length ? values.filter(item => item.prediction === item.reference).length / values.length * 100 : null }))
+  const byThreshold: Array<Record<string, string | number | null> & { threshold: string }> = [85, 90, 95, 98].map(value => {
+    const group = valid.filter(item => item.confidence >= value / 100)
+    const values: Record<string, number | null> = {}
+    for (const reference of references) {
+      const selected = group.filter(item => item.reference === reference)
+      values[reference] = selected.length ? selected.filter(item => item.prediction === reference).length / selected.length * 100 : null
+      values[`n_${reference}`] = selected.length
+    }
+    return { threshold: `≥${value} %`, ...values }
+  })
+  return { references, byClass, groups, byThreshold }
+}
+
+export function comparisonStats(runs: { model: string; setup: string; items: Item[] }[]) {
+  const models = [...new Set(runs.map(run => run.model))]
+  const rows = [...new Set(runs.map(run => run.setup))].map(setup => {
+    const row: Record<string, string | number | null> = { setup }
+    models.forEach((model, index) => {
+      const accuracies = runs.filter(run => run.setup === setup && run.model === model).map(run => stats(run.items).accuracy).filter((value): value is number => value !== null).map(value => value * 100)
+      const mean = accuracies.length ? accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length : null
+      row[`series_${index}`] = mean
+      row[`spread_${index}`] = mean !== null && accuracies.length > 1 ? Math.sqrt(accuracies.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (accuracies.length - 1)) : null
+      row[`count_${index}`] = accuracies.length
+    })
+    return row
+  })
+  return { models, rows }
+}
+
+export type PlotDataset = { id: string; label: string; model: string; setup: string; items: Item[] }
+
+export function plotDataset(body: { id: string; name: string; model: string; method?: string; prompt_config?: string; sources?: Record<string, boolean> }, items: Item[]): PlotDataset {
+  const sources = body.sources ? Object.entries(body.sources).filter(([, enabled]) => enabled).map(([key]) => ({ text: 'Text', osm: 'OSM', satellite: 'Satellit' }[key] ?? key)).join(' + ') || 'Nur Name' : 'Quellen unbekannt'
+  const setup = [sources, body.method === 'multi_turn' ? 'Multi-Turn' : body.method === 'zero_shot' ? 'Zero-Shot' : body.method, body.prompt_config].filter(Boolean).join(' · ')
+  return { id: body.id, label: body.name, model: body.model, setup, items }
+}

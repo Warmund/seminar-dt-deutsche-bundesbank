@@ -53,3 +53,30 @@ test('unknown predictions and missing confidence always require review', () => {
   assert.equal(threshold(items, 1).accuracy, null)
   assert.equal(hash(items[0], 0), hash(items[0], 500))
 })
+
+test('kickoff charts use overlapping confidence thresholds and preserve missing values', () => {
+  const { items } = normalize([
+    { reference: 'A', prediction: 'A', confidence: 0.85 },
+    { reference: 'A', prediction: 'B', confidence: 0.98 },
+    { reference: 'B', prediction: 'B', confidence: 0.7 },
+    { reference: 'B', prediction: 'B' },
+  ])
+  const result = analysis.kickoffStats(items)
+  assert.deepEqual(result.byClass.map(x => [x.reference, x.n, x.accuracy]), [['A', 2, 50], ['B', 2, 100]])
+  assert.deepEqual(result.groups.map(x => [x.n, x.accuracy]), [[1, 100], [2, 50], [1, 0], [1, 0], [1, 0]])
+  assert.equal(result.byThreshold[0].A, 50)
+  assert.equal(result.byThreshold[0].B, null)
+  assert.equal(result.byThreshold[3].n_A, 1)
+  assert.equal(result.byThreshold[3].n_B, 0)
+})
+
+test('model comparisons average runs and show spread only for repeated runs', () => {
+  const one = normalize([{ reference: 'A', prediction: 'A' }, { reference: 'A', prediction: 'B' }]).items
+  const two = normalize([{ reference: 'A', prediction: 'A' }]).items
+  const result = analysis.comparisonStats([{ model: 'M', setup: 'Text', items: one }, { model: 'M', setup: 'Text', items: two }, { model: 'N', setup: 'Bild', items: two }])
+  assert.equal(result.rows[0].series_0, 75)
+  assert.ok(Math.abs(result.rows[0].spread_0 - Math.sqrt(1250)) < 1e-10)
+  assert.equal(result.rows[0].count_0, 2)
+  assert.equal(result.rows[0].series_1, null)
+  assert.equal(result.rows[1].spread_1, null)
+})
