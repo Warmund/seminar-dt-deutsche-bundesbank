@@ -26,6 +26,7 @@ export function AppSidebar({ username, isAdmin, page, onLogout, ...props }: Reac
           <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'classification'}>
             <a href="#classification"><ScanLineIcon /><span>Klassifizierung</span></a>
           </SidebarMenuButton></SidebarMenuItem>
+          <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'review'}><a href="#review"><ShieldCheckIcon /><span>Prüfstation</span></a></SidebarMenuButton></SidebarMenuItem>
           <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'analysis'}><a href="#analysis"><ChartColumnIcon /><span>Analyse</span></a></SidebarMenuButton></SidebarMenuItem>
         </SidebarMenu></SidebarGroupContent></SidebarGroup>
       </SidebarContent>

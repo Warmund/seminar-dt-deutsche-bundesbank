@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Layers2, ArrowRight, LoaderCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { ReviewPage } from '@/components/review-page'
 import { AnalysisPage } from '@/components/analysis-page'
 import { ClassificationPage } from '@/components/classification-runs-page'
 import { SettingsPage } from '@/components/settings-page'
@@ -20,7 +21,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react'
 import './App.css' 
 
 function App() {
-  const [page, setPage] = useState(() => window.location.hash === '#analysis' ? 'analysis' : window.location.hash.startsWith('#classification') ? 'classification' : window.location.hash === '#profile' ? 'profile' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
+  const [page, setPage] = useState(() => window.location.hash === '#review' ? 'review' : window.location.hash === '#analysis' ? 'analysis' : window.location.hash.startsWith('#classification') ? 'classification' : window.location.hash === '#profile' ? 'profile' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
   const [user, setUser] = useState<{ username: string; is_admin: boolean } | null>(null)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
@@ -34,7 +35,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const updatePage = () => setPage(window.location.hash === '#analysis' ? 'analysis' : window.location.hash.startsWith('#classification') ? 'classification' : window.location.hash === '#profile' ? 'profile' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
+    const updatePage = () => setPage(window.location.hash === '#review' ? 'review' : window.location.hash === '#analysis' ? 'analysis' : window.location.hash.startsWith('#classification') ? 'classification' : window.location.hash === '#profile' ? 'profile' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
     window.addEventListener('hashchange', updatePage)
     return () => window.removeEventListener('hashchange', updatePage)
   }, [])
@@ -68,10 +69,11 @@ function App() {
       <SidebarProvider style={{ '--sidebar-width': 'calc(var(--spacing) * 72)', '--header-height': 'calc(var(--spacing) * 12)' } as React.CSSProperties}>
         <AppSidebar variant="inset" username={user.username} isAdmin={user.is_admin} page={page} onLogout={logout} />
         <SidebarInset>
-          <SiteHeader title={page === 'analysis' ? 'Analyse' : page === 'classification' ? 'Klassifizierung' : page === 'profile' ? 'Profil' : page === 'settings' ? 'Einstellungen' : page === 'admin' ? 'Admin-Panel' : 'Moneta'} />
+          <SiteHeader title={page === 'review' ? 'Prüfstation' : page === 'analysis' ? 'Analyse' : page === 'classification' ? 'Klassifizierung' : page === 'profile' ? 'Profil' : page === 'settings' ? 'Einstellungen' : page === 'admin' ? 'Admin-Panel' : 'Moneta'} />
           {page === 'moneta' && <MonetaPage />}
           {page === 'classification' && <ClassificationPage />}
           {page === 'analysis' && <AnalysisPage />}
+          {page === 'review' && <ReviewPage isAdmin={user.is_admin} />}
           {page === 'settings' && <SettingsPage />}
           {page === 'profile' && <ProfilePage username={user.username} />}
           {page === 'admin' && (user.is_admin ? <AdminPage username={user.username} /> : <p className="p-6">Administratorzugriff erforderlich.</p>)}

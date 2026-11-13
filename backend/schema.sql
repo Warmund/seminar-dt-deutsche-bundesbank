@@ -96,3 +96,23 @@ ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS selection jsonb NOT NUL
 
 ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS runner_state text NOT NULL DEFAULT 'paused';
 ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS runner_generation uuid;
+
+CREATE TABLE IF NOT EXISTS review_sessions (
+ run_id uuid PRIMARY KEY REFERENCES classification_runs(id) ON DELETE CASCADE,
+ variant text NOT NULL DEFAULT 'A', threshold double precision NOT NULL DEFAULT 0.8,
+ thresholds jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS review_entries (
+ run_id uuid NOT NULL REFERENCES review_sessions(run_id) ON DELETE CASCADE,
+ position integer NOT NULL, user_id bigint NOT NULL REFERENCES app_users(id),
+ initial_code text, initial_cert integer, revealed_at timestamptz,
+ final_code text, certainty integer, comment text NOT NULL DEFAULT '',
+ status text NOT NULL DEFAULT 'open', messages jsonb NOT NULL DEFAULT '[]',
+ started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(run_id,position,user_id)
+);
+CREATE TABLE IF NOT EXISTS review_events (
+ id bigserial PRIMARY KEY, run_id uuid NOT NULL REFERENCES review_sessions(run_id) ON DELETE CASCADE,
+ position integer NOT NULL, user_id bigint NOT NULL REFERENCES app_users(id),
+ action text NOT NULL, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
