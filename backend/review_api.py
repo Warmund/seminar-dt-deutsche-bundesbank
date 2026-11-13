@@ -113,7 +113,13 @@ def act(run_id: uuid.UUID, position:int, data:Action, connection:Connection, use
 @app.get('/api/review/{run_id}/export')
 def export(run_id:uuid.UUID,connection:Connection,user=Depends(current_user)):
     accessible_run(connection,run_id,user)
-    return {'entries':connection.execute('SELECT * FROM review_entries WHERE run_id=%s AND user_id=%s ORDER BY position',(run_id,user['id'])).fetchall(),'events':connection.execute('SELECT * FROM review_events WHERE run_id=%s AND user_id=%s ORDER BY id',(run_id,user['id'])).fetchall()}
+    entries=connection.execute('SELECT e.*,i.osm_type,i.osm_id,i.reference,e.final_code AS prediction,i.result AS ai_result FROM review_entries e JOIN classification_run_items i ON i.run_id=e.run_id AND i.position=e.position WHERE e.run_id=%s AND (%s OR e.user_id=%s) ORDER BY e.user_id,e.position',(run_id,user['is_admin'],user['id'])).fetchall()
+    if not user['is_admin']:
+        for entry in entries:
+            entry.pop('reference',None)
+            entry.pop('ai_result',None)
+    events=connection.execute('SELECT * FROM review_events WHERE run_id=%s AND (%s OR user_id=%s) ORDER BY id',(run_id,user['is_admin'],user['id'])).fetchall()
+    return {'items':entries,'entries':entries,'events':events,'settings':connection.execute('SELECT * FROM review_sessions WHERE run_id=%s',(run_id,)).fetchone()}
 
 @app.get('/api/review/{run_id}/{position}/images/{kind}')
 def review_image(run_id:uuid.UUID,position:int,kind:Literal['osm','satellite'],connection:Connection,user=Depends(current_user)):
