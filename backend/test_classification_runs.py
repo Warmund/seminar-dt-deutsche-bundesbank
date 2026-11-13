@@ -161,7 +161,7 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         assert jev_run.status_code==201
         with connect() as c:
             snapshot=c.execute('SELECT snapshot FROM classification_run_items WHERE run_id=%s',(jev_run.json()['id'],)).fetchone()['snapshot']
-            assert snapshot['text_preprocessing']=='jev-text-v1'
+            assert snapshot['text_preprocessing']==runs.TEXT_PREPROCESSING_VERSION
             assert 'We manufacture medical equipment' in snapshot['texts']['website']
             assert c.execute("SELECT data FROM moneta_records WHERE osm_type='node' AND osm_id=4").fetchone()['data']['tags']['website']==noisy_text
         assert client.get('/api/classification/runs/'+jev_run.json()['id']).json()['model']=='jev-1.13'
@@ -192,7 +192,7 @@ def test_delete_run_checks_ownership_origin_and_running_state():
     class Connection:
         def __init__(self): self.owner = 1; self.running = False; self.deleted = False
         def execute(self, sql, args=()):
-            if sql.startswith('SELECT id FROM classification_runs'):
+            if sql.startswith('SELECT id,runner_state FROM classification_runs'):
                 assert 'FOR UPDATE' in sql
                 return Cursor({'id': run_id} if args == (run_id, self.owner) and not self.deleted else None)
             if sql.startswith('SELECT 1 FROM classification_run_items'):

@@ -130,7 +130,7 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
 
 @app.get('/api/classification/runs')
 def list_runs(connection: Connection, user=Depends(current_user), offset: Annotated[int, Query(ge=0)] = 0):
-    rows = connection.execute('SELECT r.id,r.name,r.model,r.sources,r.method,r.prompt_config,r.created_at, count(*) AS total, '
+    rows = connection.execute('SELECT r.id,r.name,r.model,r.sources,r.method,r.prompt_config,r.created_at,r.runner_state, count(*) AS total, '
         "count(*) FILTER (WHERE i.state='done') AS done, count(*) FILTER (WHERE i.state='error') AS errors, "
         "count(*) FILTER (WHERE i.state='running') AS running FROM classification_runs r JOIN classification_run_items i ON i.run_id=r.id "
         'WHERE r.user_id=%s GROUP BY r.id ORDER BY r.created_at DESC LIMIT 25 OFFSET %s', (user['id'],offset)).fetchall()
@@ -146,11 +146,53 @@ def get_run(run_id: uuid.UUID, connection: Connection, user=Depends(current_user
     return {**run, 'items':items}
 
 
-@app.delete('/api/classification/runs/{run_id}', dependencies=[Depends(origin_check)])
-def delete_run(run_id: uuid.UUID, connection: Connection, user=Depends(current_user)):
-    run = connection.execute('SELECT id FROM classification_runs WHERE id=%s AND user_id=%s FOR UPDATE', (run_id,user['id'])).fetchone()
+class StartRun(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    retry_position: int | None = Field(default=None, ge=0)
+
+
+@app.post('/api/classification/runs/{run_id}/start', dependencies=[Depends(origin_check)])
+def start_background(run_id: uuid.UUID, data: StartRun, connection: Connection, user=Depends(current_user)):
+    from run_queue import publish_step
+    run = connection.execute('SELECT runner_state FROM classification_runs WHERE id=%s AND user_id=%s FOR UPDATE', (run_id,user['id'])).fetchone()
     if not run:
         raise HTTPException(404, 'Lauf nicht gefunden.')
+    if run['runner_state'] == 'running':
+        raise HTTPException(409, 'Lauf wird bereits verarbeitet.')
+    if connection.execute("SELECT 1 FROM classification_run_items WHERE run_id=%s AND state='running' AND started_at > now() - interval '5 minutes'", (run_id,)).fetchone():
+        raise HTTPException(409, 'Eine Anfrage wird noch verarbeitet. Bitte kurz warten.')
+    if data.retry_position is None:
+        item = connection.execute("SELECT position,clues,state,attempt FROM classification_run_items WHERE run_id=%s AND state='pending' ORDER BY position LIMIT 1", (run_id,)).fetchone()
+    else:
+        item = connection.execute("SELECT position,clues,state,attempt FROM classification_run_items WHERE run_id=%s AND position=%s AND state IN ('error','running')", (run_id,data.retry_position)).fetchone()
+    if not item:
+        raise HTTPException(409, 'Kein passender offener Schritt gefunden.')
+    generation = uuid.uuid4()
+    connection.execute("UPDATE classification_runs SET runner_state='running', runner_generation=%s WHERE id=%s", (generation,run_id))
+    try:
+        publish_step(run_id,user['id'],generation,item['position'],len(item['clues'] or {}),retry=data.retry_position is not None,single=data.retry_position is not None,previous_attempt=item['attempt'])
+    except Exception:
+        connection.rollback()
+        raise HTTPException(503, 'Hintergrundverarbeitung konnte nicht gestartet werden. Bitte erneut versuchen.') from None
+    connection.commit()
+    return {'ok': True}
+
+
+@app.post('/api/classification/runs/{run_id}/stop', dependencies=[Depends(origin_check)])
+def stop_background(run_id: uuid.UUID, connection: Connection, user=Depends(current_user)):
+    run = connection.execute("UPDATE classification_runs SET runner_state='paused' WHERE id=%s AND user_id=%s RETURNING id", (run_id,user['id'])).fetchone()
+    if not run:
+        raise HTTPException(404, 'Lauf nicht gefunden.')
+    return {'ok': True}
+
+
+@app.delete('/api/classification/runs/{run_id}', dependencies=[Depends(origin_check)])
+def delete_run(run_id: uuid.UUID, connection: Connection, user=Depends(current_user)):
+    run = connection.execute('SELECT id,runner_state FROM classification_runs WHERE id=%s AND user_id=%s FOR UPDATE', (run_id,user['id'])).fetchone()
+    if not run:
+        raise HTTPException(404, 'Lauf nicht gefunden.')
+    if run.get('runner_state') == 'running':
+        raise HTTPException(409, 'Bitte den Lauf zuerst stoppen.')
     if connection.execute("SELECT 1 FROM classification_run_items WHERE run_id=%s AND state='running'", (run_id,)).fetchone():
         raise HTTPException(409, 'Lauf wird noch verarbeitet oder ist unterbrochen. Bitte zuerst den laufenden Schritt abschließen oder erneut versuchen.')
     connection.execute('DELETE FROM classification_runs WHERE id=%s AND user_id=%s', (run_id,user['id']))
@@ -158,10 +200,14 @@ def delete_run(run_id: uuid.UUID, connection: Connection, user=Depends(current_u
 
 
 @app.post('/api/classification/runs/{run_id}/items/{position}', dependencies=[Depends(origin_check)])
-def process_item(run_id: uuid.UUID, position: int, connection: Connection, user=Depends(current_user), retry: bool = False):
+def process_item(run_id: uuid.UUID, position: int, connection: Connection, user=Depends(current_user), retry: bool = False, generation: uuid.UUID | None = None):
     run = owned_run(connection, run_id, user)
     # Lock the run to allow only one paid request at a time, including across browser tabs.
-    connection.execute('SELECT id FROM classification_runs WHERE id=%s FOR UPDATE', (run_id,))
+    locked = connection.execute('SELECT id,runner_state,runner_generation FROM classification_runs WHERE id=%s FOR UPDATE', (run_id,)).fetchone()
+    if not locked:
+        raise HTTPException(404, 'Lauf nicht gefunden.')
+    if generation is not None and (locked['runner_state'] != 'running' or locked['runner_generation'] != generation):
+        raise HTTPException(409, 'Lauf wurde angehalten.')
     item = connection.execute('SELECT * FROM classification_run_items WHERE run_id=%s AND position=%s', (run_id,position)).fetchone()
     if not item:
         raise HTTPException(404,'Datenpunkt im Lauf nicht gefunden.')

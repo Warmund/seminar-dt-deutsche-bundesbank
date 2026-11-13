@@ -93,3 +93,6 @@ ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS clue_prompts jsonb NOT 
 ALTER TABLE classification_run_items ADD COLUMN IF NOT EXISTS clues jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS selection jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS runner_state text NOT NULL DEFAULT 'paused';
+ALTER TABLE classification_runs ADD COLUMN IF NOT EXISTS runner_generation uuid;
