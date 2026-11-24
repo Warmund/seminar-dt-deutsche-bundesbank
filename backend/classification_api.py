@@ -14,7 +14,7 @@ from main import app, Connection
 from auth import current_user, origin_check
 import image_storage
 
-MODELS = {'perplexity/pplx-decider-v1.2': 'Perplexity Decider V1.2', 'gpt-5-mini': 'GPT-5 Mini', 'gpt-6-luna': 'GPT-6 Luna', 'gpt-6.1-terra': 'GPT-6.1 Terra', 'jev-1.13': 'Jev 1.13', 'jev-1.13-free': 'Jev 1.13 Free'}
+MODELS = {'perplexity/pplx-decider-v1.2': 'Perplexity Decider V1.2', 'gpt-5-mini': 'GPT-5 Mini', 'gpt-6-luna': 'GPT-6 Luna', 'gpt-6.1-terra': 'GPT-6.1 Terra', 'gpt-6.2-sol': 'GPT-6.2 Sol', 'jev-1.13': 'Jev 1.13', 'jev-1.13-free': 'Jev 1.13 Free'}
 
 SECTIONS = json.loads(Path(__file__).with_name('nace_sections.json').read_text())
 

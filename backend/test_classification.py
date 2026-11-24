@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app, database
@@ -14,7 +15,8 @@ def test_only_allowed_features_and_complete_text():
     assert features['source:website'] == 'y' * 50000
 
 
-def test_classification_boundaries_and_reference_separation(monkeypatch):
+@pytest.mark.parametrize('model', ['gpt-6.2-sol', 'gpt-6.1-terra'])
+def test_classification_boundaries_and_reference_separation(monkeypatch, model):
     class Connection:
         def execute(self, sql, args=()):
             self.sql = sql
@@ -38,6 +40,7 @@ def test_classification_boundaries_and_reference_separation(monkeypatch):
 
     monkeypatch.setattr(api, 'OpenAI', FakeClient)
     monkeypatch.setenv('OPENAI_API_KEY', 'test-only')
+    monkeypatch.setenv('OPENAI_MODEL', model)
     app.dependency_overrides[database] = lambda: Connection()
     app.dependency_overrides[current_user] = lambda: {'id': 1}
     try:
@@ -49,6 +52,9 @@ def test_classification_boundaries_and_reference_separation(monkeypatch):
         assert response.json()['prediction']['category'] == 'G'
         assert response.json()['reference'] == 'SECRET_REFERENCE'
         assert 'SECRET_REFERENCE' not in str(calls)
+        assert model in client.get('/api/classification/status').json()['models']
+        assert calls[0]['model'] == model
+        assert calls[0]['reasoning'] == {'effort': 'low'}
         assert calls[0]['store'] is False
         monkeypatch.delenv('OPENAI_API_KEY')
         assert client.post('/api/classification', headers={'origin': 'http://localhost:5173'}, json=body).status_code == 503

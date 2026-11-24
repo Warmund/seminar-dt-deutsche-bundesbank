@@ -7,6 +7,7 @@ const PRICES: Record<string, { input: number; output: number }> = {
   'gpt-5-mini': { input: 0.25, output: 2 },
   'gpt-6-luna': { input: 0.10, output: 0.50 },
   'gpt-6.1-terra': { input: 1, output: 5 },
+  'gpt-6.2-sol': { input: 2, output: 10 },
   'jev-1.13': { input: 0.042, output: 0 },
   'jev-1.13-free': { input: 0, output: 0 },
 }
