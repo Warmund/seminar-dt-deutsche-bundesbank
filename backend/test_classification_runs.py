@@ -1,5 +1,6 @@
 import os
 import uuid
+from collections import Counter
 from pathlib import Path
 
 import psycopg
@@ -12,6 +13,20 @@ from psycopg.types.json import Jsonb
 from main import app, database
 from auth import current_user
 import classification_runs as runs
+
+
+def test_stratified_sample_uses_proportional_quotas_and_stable_seed():
+    population = [
+        {'osm_type': 'way', 'osm_id': osm_id, 'category': category}
+        for category, size in [('A', 7), ('B', 2), ('C', 1)]
+        for osm_id in range(ord(category) * 10, ord(category) * 10 + size)
+    ]
+    selected = runs.stratified_sample(population, 6, 42)
+    keys = {runs.record_key(row) for row in selected}
+    assert len(selected) == len(keys) == 6
+    assert Counter(row['category'] for row in selected) == {'A': 4, 'B': 1, 'C': 1}
+    assert runs.stratified_sample(population[::-1], 6, 42) == selected
+    assert {runs.record_key(row) for row in runs.stratified_sample(population, 6, 43)} != keys
 
 
 @pytest.mark.skipif(not os.environ.get('TEST_DATABASE_URL'), reason='TEST_DATABASE_URL fehlt')
@@ -148,6 +163,39 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         assert client.post('/api/classification/runs',json=filtered | {'model':'unapproved-model'}).status_code==422
         assert frozen['selection']['classes']==['B','C'] and frozen['selection']['count']==3
         assert [item['osm_id'] for item in frozen['items']]==['4','2','3']
+        assert frozen['sample_comparison'] is None
+        options = filtered | {'selection': {'count': 2, 'classes': ['B', 'C'], 'seed': 7}}
+        sample_id = client.post('/api/classification/runs', json=options).json()['id']
+        duplicate_id = client.post('/api/classification/runs', json=options).json()['id']
+        sample_url = f'/api/classification/runs/{sample_id}'
+        saved = client.get(sample_url).json()
+        assert saved['selection']['seed'] == 7 and saved['selection']['population_count'] == 3
+        assert {item['reference'] for item in saved['items']} == {'B', 'C'}
+        assert [item['osm_id'] for item in saved['items']] == [
+            item['osm_id'] for item in client.get(f'/api/classification/runs/{duplicate_id}').json()['items']
+        ]
+        assert saved['sample_comparison'] == {'status': 'sample_incomplete'}
+        with connect() as c:
+            c.execute("""
+                UPDATE classification_run_items SET state='done',
+                    result=jsonb_build_object('prediction', jsonb_build_object('category',
+                        CASE WHEN reference='B' THEN 'B' ELSE 'UNK' END))
+                WHERE run_id=%s
+                """, (sample_id,))
+        assert client.get(sample_url).json()['sample_comparison'] == {'status': 'population_run_missing'}
+        with connect() as c:
+            c.execute("""
+                UPDATE classification_run_items SET state='done',
+                    result=jsonb_build_object('prediction', jsonb_build_object('category', reference))
+                WHERE run_id=%s
+                """, (filtered_id,))
+            c.execute("UPDATE classification_run_items SET reference='D' WHERE run_id=%s AND position=0", (filtered_id,))
+        assert client.get(sample_url).json()['sample_comparison'] == {'status': 'population_run_missing'}
+        with connect() as c:
+            c.execute("UPDATE classification_run_items SET reference='B' WHERE run_id=%s AND position=0", (filtered_id,))
+        comparison = client.get(sample_url).json()['sample_comparison']
+        assert comparison['status'] == 'available' and comparison['run_id'] == filtered_id
+        assert (comparison['sample_accuracy'], comparison['population_accuracy'], comparison['difference_pp']) == (0.5, 1, -50)
         for selection in [{'count':4,'classes':['B','C']},{'count':1,'classes':[]},{'count':1,'classes':['Z']},{'count':True,'classes':['B']},{'count':1,'classes':['B','B']},{'count':1001,'classes':['B']}]:
             assert client.post('/api/classification/runs',json=filtered | {'selection':selection}).status_code==422
         assert client.post('/api/classification/runs',json=filtered | {'items':data['items']}).status_code==422
@@ -156,8 +204,8 @@ def test_run_snapshot_persistence_isolation_and_retry(monkeypatch):
         assert {item['reference'] for item in client.get(f'/api/classification/runs/{filtered_id}').json()['items']}=={'B','C'}
         noisy_text=('Historical archive entry. ' * 400) + 'We manufacture medical equipment for hospitals.'
         with connect() as c:
-            c.execute("UPDATE moneta_records SET data=%s WHERE osm_type='node' AND osm_id=4",(Jsonb({'tags':{'website':noisy_text}}),))
-        jev_run=client.post('/api/classification/runs',json=filtered | {'model':'jev-1.13','selection':{'count':1,'classes':['A']}})
+            c.execute("UPDATE moneta_records SET data=%s,category='E' WHERE osm_type='node' AND osm_id=4",(Jsonb({'tags':{'website':noisy_text}}),))
+        jev_run=client.post('/api/classification/runs',json=filtered | {'model':'jev-1.13','selection':{'count':1,'classes':['E']}})
         assert jev_run.status_code==201
         with connect() as c:
             snapshot=c.execute('SELECT snapshot FROM classification_run_items WHERE run_id=%s',(jev_run.json()['id'],)).fetchone()['snapshot']

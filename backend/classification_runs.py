@@ -2,6 +2,8 @@
 import os
 import json
 import uuid
+from collections import defaultdict
+from hashlib import sha256
 from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException, Query
@@ -23,7 +25,8 @@ class RecordKey(BaseModel):
 
 class DatasetSelection(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    count: int = Field(ge=1, le=1000, strict=True)
+    count: int = Field(ge=1, strict=True)
+    seed: int = Field(default=42, ge=0, le=2147483647, strict=True)
     classes: list[Annotated[str, Field(pattern='^[A-U]$')]] = Field(min_length=1, max_length=21)
 
     @model_validator(mode='after')
@@ -65,6 +68,36 @@ def dataset(connection: Connection, dataset_id: Annotated[int, Query(ge=1)] = 1)
     return {'total':sum(counts.values()), 'classes':[{'category':entry['category'],'title':entry['title'],'count':counts.get(entry['category'],0)} for entry in ASSETS['sections']]}
 
 
+def record_key(row):
+    return f"{row['osm_type']}:{row['osm_id']}:{row['category']}"
+
+
+def population_hash(keys):
+    return sha256('\n'.join(sorted(keys)).encode()).hexdigest()
+
+
+def stratified_sample(population, count, seed):
+    groups = defaultdict(list)
+    for row in population:
+        groups[row['category']].append(row)
+
+    # Allocate whole places first, then distribute the remainder by fractional quota.
+    quotas, remainders = {}, {}
+    for category, group in groups.items():
+        quotas[category], remainders[category] = divmod(count * len(group), len(population))
+    remaining = count - sum(quotas.values())
+    for category in sorted(groups, key=lambda category: (-remainders[category], category))[:remaining]:
+        quotas[category] += 1
+
+    def rank(row):
+        return sha256(f'{seed}:{record_key(row)}'.encode()).digest()
+
+    selected = []
+    for category in sorted(groups):
+        selected.extend(sorted(groups[category], key=rank)[:quotas[category]])
+    return selected
+
+
 @app.post('/api/classification/runs', status_code=201, dependencies=[Depends(origin_check)])
 def create_run(data: NewRun, connection: Connection, user=Depends(current_user)):
     if data.model and (data.model.startswith('jev-') or data.model == 'perplexity/pplx-decider-v1.2') and data.method != 'zero_shot':
@@ -72,11 +105,28 @@ def create_run(data: NewRun, connection: Connection, user=Depends(current_user))
     if data.method == 'multi_turn' and not all(data.sources.model_dump().values()):
         raise HTTPException(422, 'Multi-Turn verwendet alle verfügbaren Quellen wie MONETA.')
     if data.selection:
-        rows = connection.execute('SELECT osm_type,osm_id,name,category,data FROM moneta_records WHERE dataset_id=%s AND category = ANY(%s) ORDER BY osm_type,osm_id LIMIT %s',
-                                  (data.dataset_id,data.selection.classes,data.selection.count)).fetchall()
+        population = connection.execute(
+            'SELECT osm_type,osm_id,category FROM moneta_records WHERE dataset_id=%s AND category = ANY(%s)',
+            (data.dataset_id, data.selection.classes),
+        ).fetchall()
+        if data.selection.count > len(population):
+            raise HTTPException(422, f'Für die gewählten Klassen sind nur {len(population)} Datenpunkte verfügbar. Bitte die Anzahl reduzieren.')
+        sample = stratified_sample(population, data.selection.count, data.selection.seed)
+        rows = connection.execute(
+            'SELECT r.osm_type,r.osm_id,r.name,r.category,r.data FROM moneta_records r '
+            'JOIN unnest(%s::text[],%s::bigint[],%s::text[]) AS s(osm_type,osm_id,category) '
+            'USING (osm_type,osm_id,category) WHERE r.dataset_id=%s ORDER BY r.osm_type,r.osm_id',
+            ([row['osm_type'] for row in sample], [row['osm_id'] for row in sample],
+             [row['category'] for row in sample], data.dataset_id),
+        ).fetchall()
         if len(rows) != data.selection.count:
-            raise HTTPException(422, f'Für die gewählten Klassen sind nur {len(rows)} Datenpunkte verfügbar. Bitte die Anzahl reduzieren.')
-        criteria = {**data.selection.model_dump(), 'order':'osm_type,osm_id'}
+            raise HTTPException(409, 'Der Datensatz wurde während der Auswahl geändert. Bitte erneut versuchen.')
+        criteria = {
+            **data.selection.model_dump(),
+            'strategy': 'stratified-v1',
+            'population_count': len(population),
+            'population_hash': population_hash(map(record_key, population)),
+        }
     else:
         keys = {(item.osm_type,item.osm_id) for item in data.items}
         if len(keys) != len(data.items):
@@ -147,7 +197,54 @@ def get_run(run_id: uuid.UUID, connection: Connection, user=Depends(current_user
     run = owned_run(connection, run_id, user)
     items = connection.execute('SELECT position,osm_type,osm_id,name,reference,state,result,clues,error,started_at,finished_at, '
         "(state='running' AND started_at < now() - interval '5 minutes') AS stalled FROM classification_run_items WHERE run_id=%s ORDER BY position",(run_id,)).fetchall()
-    return {**run, 'items':items}
+    return {**run, 'items':items, 'sample_comparison': sample_comparison(connection, run, items)}
+
+
+def sample_comparison(connection, run, items):
+    selection = run['selection']
+    population_count = selection.get('population_count')
+    if not population_count or len(items) >= population_count:
+        return None
+
+    def prediction(item):
+        if item['state'] == 'done' and item['result']:
+            return item['result'].get('prediction', {}).get('category')
+        return None
+
+    predictions = [prediction(item) for item in items]
+    if any(value is None for value in predictions):
+        return {'status': 'sample_incomplete'}
+
+    # Match the original population, so later imports cannot silently change the benchmark.
+    candidates = connection.execute(
+        """
+        SELECT r.id,r.name,
+            array_agg(i.osm_type || ':' || i.osm_id || ':' || i.reference) AS keys,
+            count(*) FILTER (WHERE (i.result #>> '{prediction,category}') = i.reference) AS correct
+        FROM classification_runs r JOIN classification_run_items i ON i.run_id=r.id
+        WHERE r.user_id=%s AND r.dataset_id=%s AND r.model=%s AND r.method=%s
+            AND r.prompt_config=%s AND r.prompt=%s AND r.clue_prompts=%s AND r.sources=%s
+        GROUP BY r.id
+        HAVING count(*)=%s
+            AND count(*) FILTER (WHERE i.state='done' AND (i.result #>> '{prediction,category}') IS NOT NULL)=%s
+        ORDER BY r.created_at DESC,r.id
+        """,
+        (run['user_id'], run['dataset_id'], run['model'], run['method'], run['prompt_config'],
+         run['prompt'], Jsonb(run['clue_prompts']), Jsonb(run['sources']), population_count, population_count),
+    )
+    for candidate in candidates:
+        if population_hash(candidate['keys']) == selection['population_hash']:
+            sample_accuracy = sum(value == item['reference'] for value, item in zip(predictions, items)) / len(items)
+            population_accuracy = candidate['correct'] / population_count
+            return {
+                'status': 'available',
+                'run_id': candidate['id'],
+                'run_name': candidate['name'],
+                'sample_accuracy': sample_accuracy,
+                'population_accuracy': population_accuracy,
+                'difference_pp': (sample_accuracy - population_accuracy) * 100,
+            }
+    return {'status': 'population_run_missing'}
 
 
 class StartRun(BaseModel):
