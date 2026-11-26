@@ -127,3 +127,76 @@ CREATE TABLE IF NOT EXISTS review_events (
  position integer NOT NULL, user_id bigint NOT NULL REFERENCES app_users(id),
  action text NOT NULL, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Nutzerstudie: frei wählbare Fallsets, Testläufe mit Zugangscode, Zeitmessung und Fragebogen.
+CREATE TABLE IF NOT EXISTS study_case_sets (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name text NOT NULL CHECK (length(name) BETWEEN 1 AND 150),
+    run_id uuid NOT NULL,
+    positions integer[] NOT NULL CHECK (cardinality(positions) BETWEEN 1 AND 50),
+    threshold double precision CHECK (threshold >= 0 AND threshold <= 1),
+    note text NOT NULL DEFAULT '' CHECK (length(note) <= 2000),
+    created_by bigint NOT NULL REFERENCES app_users(id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT study_case_sets_run_fk FOREIGN KEY (run_id) REFERENCES classification_runs(id)
+);
+CREATE TABLE IF NOT EXISTS study_sessions (
+    id uuid PRIMARY KEY,
+    case_set_id bigint NOT NULL REFERENCES study_case_sets(id),
+    run_id uuid NOT NULL,
+    participant_code text NOT NULL CHECK (participant_code ~ '^[A-Za-z0-9_-]{1,20}$'),
+    access_hash text NOT NULL UNIQUE,
+    language text NOT NULL DEFAULT 'de' CHECK (language IN ('de', 'en')),
+    pilot boolean NOT NULL DEFAULT false,
+    case_order integer[] NOT NULL,
+    status text NOT NULL DEFAULT 'created' CHECK (status IN ('created', 'running', 'questionnaire', 'completed', 'aborted')),
+    created_by bigint NOT NULL REFERENCES app_users(id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    started_at timestamptz,
+    cases_finished_at timestamptz,
+    finished_at timestamptz,
+    current_position integer,
+    current_since timestamptz,
+    CONSTRAINT study_sessions_run_fk FOREIGN KEY (run_id) REFERENCES classification_runs(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS study_sessions_unique_participant ON study_sessions (case_set_id, lower(participant_code)) WHERE NOT pilot AND status <> 'aborted';
+CREATE TABLE IF NOT EXISTS study_entries (
+    session_id uuid NOT NULL REFERENCES study_sessions(id) ON DELETE CASCADE,
+    position integer NOT NULL,
+    rank integer NOT NULL,
+    decision text CHECK (decision IN ('confirmed', 'corrected')),
+    final_code text CHECK (final_code ~ '^[A-U]$'),
+    certainty integer CHECK (certainty BETWEEN 1 AND 5),
+    rationale text NOT NULL DEFAULT '' CHECK (length(rationale) <= 5000),
+    messages jsonb NOT NULL DEFAULT '[]'::jsonb,
+    visits integer NOT NULL DEFAULT 0,
+    active_ms bigint NOT NULL DEFAULT 0,
+    first_shown_at timestamptz,
+    first_saved_at timestamptz,
+    last_saved_at timestamptz,
+    PRIMARY KEY (session_id, position)
+);
+CREATE TABLE IF NOT EXISTS study_events (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    session_id uuid NOT NULL REFERENCES study_sessions(id) ON DELETE CASCADE,
+    position integer,
+    action text NOT NULL,
+    data jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS study_events_session ON study_events (session_id, id);
+CREATE TABLE IF NOT EXISTS study_questionnaires (
+    session_id uuid PRIMARY KEY REFERENCES study_sessions(id) ON DELETE CASCADE,
+    language text NOT NULL,
+    answers jsonb NOT NULL,
+    raw_tlx double precision NOT NULL,
+    usability integer NOT NULL CHECK (usability BETWEEN 1 AND 5),
+    comment text NOT NULL DEFAULT '' CHECK (length(comment) <= 5000),
+    submitted_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS study_access_tokens (
+    token_hash text PRIMARY KEY,
+    session_id uuid NOT NULL REFERENCES study_sessions(id) ON DELETE CASCADE,
+    expires_at timestamptz NOT NULL
+);

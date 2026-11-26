@@ -19,10 +19,23 @@ import { SiteHeader } from '@/components/site-header'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { SpeedInsights } from '@vercel/speed-insights/react'
+import { StudyAdminPage } from '@/components/study-admin-page'
+import { StudyParticipantPage } from '@/components/study-participant-page'
 import './App.css' 
 
+function pageFromHash() {
+  const hash = window.location.hash
+  if (hash === '#study' || hash.startsWith('#study/')) return 'study'
+  if (hash.startsWith('#study-sets')) return 'study-sets'
+  if (hash.startsWith('#study-runs')) return 'study-runs'
+  if (hash.startsWith('#study-evaluation')) return 'study-evaluation'
+  return hash.startsWith('#evaluation') ? 'evaluation' : hash.startsWith('#review-completed') ? 'review-completed' : hash === '#review' ? 'review' : hash === '#analysis' ? 'analysis' : hash.startsWith('#classification') ? 'classification' : hash === '#profile' ? 'profile' : hash === '#settings' ? 'settings' : hash === '#admin' ? 'admin' : 'moneta'
+}
+
+const STUDY_TITLES: Record<string, string> = { 'study-sets': 'Nutzerstudie · Fallsets', 'study-runs': 'Nutzerstudie · Testläufe', 'study-evaluation': 'Nutzerstudie · Auswertung' }
+
 function App() {
-  const [page, setPage] = useState(() => window.location.hash.startsWith('#evaluation') ? 'evaluation' : window.location.hash.startsWith('#review-completed') ? 'review-completed' : window.location.hash === '#review' ? 'review' : window.location.hash === '#analysis' ? 'analysis' : window.location.hash.startsWith('#classification') ? 'classification' : window.location.hash === '#profile' ? 'profile' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
+  const [page, setPage] = useState(pageFromHash)
   const [user, setUser] = useState<{ username: string; is_admin: boolean } | null>(null)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
@@ -36,7 +49,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const updatePage = () => setPage(window.location.hash.startsWith('#evaluation') ? 'evaluation' : window.location.hash.startsWith('#review-completed') ? 'review-completed' : window.location.hash === '#review' ? 'review' : window.location.hash === '#analysis' ? 'analysis' : window.location.hash.startsWith('#classification') ? 'classification' : window.location.hash === '#profile' ? 'profile' : window.location.hash === '#settings' ? 'settings' : window.location.hash === '#admin' ? 'admin' : 'moneta')
+    const updatePage = () => setPage(pageFromHash())
     window.addEventListener('hashchange', updatePage)
     return () => window.removeEventListener('hashchange', updatePage)
   }, [])
@@ -64,13 +77,15 @@ function App() {
     } catch { setError('Abmelden fehlgeschlagen. Bitte versuchen Sie es erneut.') }
   }
 
+  // Participants of the user study use an access code instead of an account.
+  if (page === 'study') return <StudyParticipantPage />
   if (checking) return <main className="flex min-h-svh items-center justify-center bg-background" role="status"><LoaderCircle aria-hidden="true" className="size-8 animate-spin text-muted-foreground" /><span className="sr-only">Anmeldung wird geprüft …</span></main>
   if (user) return (
     <TooltipProvider>
       <SidebarProvider style={{ '--sidebar-width': 'calc(var(--spacing) * 72)', '--header-height': 'calc(var(--spacing) * 12)' } as React.CSSProperties}>
         <AppSidebar variant="inset" username={user.username} isAdmin={user.is_admin} page={page} onLogout={logout} />
         <SidebarInset>
-          <SiteHeader title={page === 'evaluation' ? 'Evaluation' : page === 'review-completed' ? 'Abgeschlossene Prüfungen' : page === 'review' ? 'Prüfstation' : page === 'analysis' ? 'Analyse' : page === 'classification' ? 'Klassifizierung' : page === 'profile' ? 'Profil' : page === 'settings' ? 'Einstellungen' : page === 'admin' ? 'Admin-Panel' : 'Moneta'} />
+          <SiteHeader title={STUDY_TITLES[page] ?? (page === 'evaluation' ? 'Evaluation' : page === 'review-completed' ? 'Abgeschlossene Prüfungen' : page === 'review' ? 'Prüfstation' : page === 'analysis' ? 'Analyse' : page === 'classification' ? 'Klassifizierung' : page === 'profile' ? 'Profil' : page === 'settings' ? 'Einstellungen' : page === 'admin' ? 'Admin-Panel' : 'Moneta')} />
           {page === 'moneta' && <MonetaPage />}
           {page === 'classification' && <ClassificationPage />}
           {page === 'analysis' && <AnalysisPage />}
@@ -79,6 +94,7 @@ function App() {
           {page === 'review' && <ReviewPage isAdmin={user.is_admin} username={user.username} />}
           {page === 'settings' && <SettingsPage />}
           {page === 'profile' && <ProfilePage username={user.username} />}
+          {page.startsWith('study-') && (user.is_admin ? <StudyAdminPage key={page} section={page === 'study-sets' ? 'sets' : page === 'study-runs' ? 'runs' : 'evaluation'} /> : <p className="p-6">Administratorzugriff erforderlich.</p>)}
           {page === 'admin' && (user.is_admin ? <AdminPage username={user.username} /> : <p className="p-6">Administratorzugriff erforderlich.</p>)}
           {error && <div className="p-4"><Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert></div>}
         </SidebarInset>

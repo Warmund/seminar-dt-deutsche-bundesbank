@@ -1,5 +1,5 @@
 import type * as React from "react"
-import { CommandIcon, ChartColumnIcon, ScanLineIcon, FolderIcon, LogOutIcon, Settings2Icon, UserRoundIcon, ShieldCheckIcon } from "lucide-react"
+import { CommandIcon, ChartColumnIcon, ScanLineIcon, FolderIcon, LogOutIcon, Settings2Icon, UserRoundIcon, ShieldCheckIcon, ListChecksIcon, UsersIcon, ChartNoAxesCombinedIcon } from "lucide-react"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarGroupContent,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -35,6 +35,11 @@ export function AppSidebar({ username, isAdmin, page, onLogout, ...props }: Reac
           <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'analysis'}><a href="#analysis"><ChartColumnIcon /><span>Modellanalyse</span></a></SidebarMenuButton></SidebarMenuItem>
           <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'evaluation'}><a href="#evaluation"><ChartColumnIcon /><span>Evaluation</span></a></SidebarMenuButton></SidebarMenuItem>
         </SidebarMenu></SidebarGroupContent></SidebarGroup>
+        {isAdmin && <SidebarGroup><SidebarGroupLabel>Nutzerstudie</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
+          <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'study-sets'}><a href="#study-sets"><ListChecksIcon /><span>Fallsets</span></a></SidebarMenuButton></SidebarMenuItem>
+          <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'study-runs'}><a href="#study-runs"><UsersIcon /><span>Testläufe</span></a></SidebarMenuButton></SidebarMenuItem>
+          <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'study-evaluation'}><a href="#study-evaluation"><ChartNoAxesCombinedIcon /><span>Auswertung</span></a></SidebarMenuButton></SidebarMenuItem>
+        </SidebarMenu></SidebarGroupContent></SidebarGroup>}
       </SidebarContent>
       <SidebarFooter><SidebarMenu>
         {isAdmin && <SidebarMenuItem><SidebarMenuButton asChild isActive={page === 'admin'}><a href="#admin"><ShieldCheckIcon /><span>Admin-Panel</span></a></SidebarMenuButton></SidebarMenuItem>}
