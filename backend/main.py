@@ -96,3 +96,5 @@ import classification_api  # noqa: E402
 import classification_runs  # noqa: E402
 
 import review_api  # noqa: E402
+
+import study_api  # noqa: E402
