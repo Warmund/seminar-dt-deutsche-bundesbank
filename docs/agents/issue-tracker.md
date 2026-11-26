@@ -2,6 +2,12 @@
 
 Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
+## Issue lifecycle
+
+1. Before starting any substantial implementation, find the tracking issue or create one if none exists.
+2. In the PR description, add `Closes #<number>` for each issue the PR fully resolves. Keep the issue open while the PR is awaiting merge.
+3. After the PR is merged, verify that every resolved issue is closed. If any is still open, close it with a comment linking to the merged PR. For completed work without a PR, close the issue with a short summary of the result.
+
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.

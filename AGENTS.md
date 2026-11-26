@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Use GitHub Issues for project work. See `docs/agents/issue-tracker.md`.
+Follow the GitHub issue workflow in `docs/agents/issue-tracker.md` before starting substantial work, when opening a PR, and when finishing work.
 
 ### Triage labels
 
