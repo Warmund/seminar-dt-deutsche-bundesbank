@@ -11,14 +11,15 @@ Diese Anleitung beschreibt den Ablauf einer Sitzung im Prototyp. Technische Deta
 
 ## Pro Sitzung
 
-1. Unter **Testläufe** einen Testlauf anlegen: Fallset, Teilnehmercode (wird automatisch hochgezählt, z. B. P03), Sprache. Der Zugangscode wird **nur einmal** angezeigt; Code und Link `…/#study` kopieren.
+1. Unter **Testläufe** entweder einen einzelnen Testlauf anlegen (Fallset, Teilnehmercode wird automatisch hochgezählt, Sprache) oder einmalig einen **Mehrfach-Code** für alle Sitzungen. Beim Mehrfach-Code erhält jede Person automatisch einen eigenen Testlauf (P01, P02 …). Code und Link `…/#study` lassen sich in der Übersicht jederzeit über „Code & Link“ anzeigen und kopieren.
 2. Der teilnehmenden Person Link und Code geben. Sie gibt den Code ein, liest den Einführungstext und klickt „Test starten“. Ab dann läuft die Zeitmessung im Hintergrund; ein Timer ist nicht sichtbar.
 3. Während der Sitzung zeigt die Liste der Testläufe den Fortschritt (aktualisiert sich alle 15 Sekunden).
 4. Nach „Fälle abschließen“ folgt der Fragebogen. Danach erscheint „Vielen Dank“ und der Code ist verbraucht.
 
 ## Sonderfälle
 
-- **Code verloren:** In der Liste „Neuer Code“ wählen. Der alte Code wird ungültig, bereits angemeldete Personen können weiterarbeiten.
+- **Code vergessen:** In der Übersicht „Code & Link“ wählen. Für Testläufe aus der Zeit vor dieser Funktion gibt es nur „Neuer Code“.
+- **Mehrfach-Code nach der Studie:** Deaktivieren, damit niemand versehentlich weitere Testläufe startet.
 - **Browser geschlossen oder neu geladen:** Mit demselben Code erneut anmelden; der Stand bleibt erhalten.
 - **Abbruch durch die teilnehmende Person:** „Abbrechen“ sperrt den Zugang sofort; bisherige Angaben bleiben gespeichert und erscheinen nicht in der Auswertung.
 - **Widerruf der Einwilligung:** „Löschen“ entfernt alle Daten des Testlaufs endgültig.

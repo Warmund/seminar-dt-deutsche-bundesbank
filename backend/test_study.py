@@ -198,6 +198,28 @@ def test_full_study_flow(study):
     deleted = admin.delete(f'/api/classification/runs/{study.run_id}')
     assert deleted.status_code == 409 and 'Nutzerstudie' in deleted.json()['detail']
 
+    # Codes of individual test runs can be displayed again by admins.
+    assert admin.get('/api/study/admin/sessions').json()['items'][0]['access_code'] == code
+
+    # A shared code starts a separate test run with the next participant code for every person.
+    invite = admin.post('/api/study/admin/invites', json={'case_set_id': case_set['id'], 'language': 'de'})
+    assert invite.status_code == 201
+    shared = invite.json()['access_code']
+    first, second, third = (TestClient(main.app, headers=ORIGIN) for _ in range(3))
+    assert first.post('/api/study/access', json={'code': shared}).json()['status'] == 'created'
+    assert second.post('/api/study/access', json={'code': shared.lower()}).status_code == 200
+    codes = [first.get('/api/study/me').json()['participant_code'], second.get('/api/study/me').json()['participant_code']]
+    assert codes == ['P02', 'P03']
+    assert first.post('/api/study/me/start').status_code == 200 and second.get('/api/study/me').json()['status'] == 'created'
+    listed = admin.get('/api/study/admin/invites').json()['items'][0]
+    assert listed['access_code'] == shared and listed['sessions'] == 2 and listed['active'] is True
+    assert admin.post(f"/api/study/admin/invites/{listed['id']}/active", json={'active': False}).status_code == 200
+    assert third.post('/api/study/access', json={'code': shared}).status_code == 410
+    assert admin.delete(f"/api/study/admin/invites/{listed['id']}").status_code == 200
+    remaining = admin.get('/api/study/admin/sessions').json()['items']
+    assert sorted(item['participant_code'] for item in remaining) == ['P01', 'P02', 'P03'] and all(item['invite_id'] is None for item in remaining)
+    assert first.get('/api/study/me').json()['status'] == 'running'
+
 
 def test_study_tables_are_created_on_first_use():
     url = os.environ.get('TEST_DATABASE_URL')
@@ -217,6 +239,31 @@ def test_study_tables_are_created_on_first_use():
             study_api.ensure_schema(c)
             assert c.execute("SELECT to_regclass('study_sessions') AS t").fetchone()['t'] is not None
             assert c.execute("SELECT count(*) AS n FROM study_case_sets").fetchone()['n'] == 0
+    finally:
+        with psycopg.connect(url, autocommit=True) as c:
+            c.execute(f'DROP SCHEMA {schema} CASCADE')
+
+
+def test_existing_study_tables_are_upgraded():
+    url = os.environ.get('TEST_DATABASE_URL')
+    if not url:
+        pytest.skip('TEST_DATABASE_URL fehlt')
+    import study_api
+    url = url.replace('-pooler.', '.')
+    schema = 'study_upgrade_' + uuid.uuid4().hex
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute(f'CREATE SCHEMA {schema}')
+    try:
+        with psycopg.connect(url, options=f'-c search_path={schema}', row_factory=dict_row) as c:
+            c.execute(Path(study_api.__file__).with_name('schema.sql').read_text())
+            # State of the first release: no shared codes and no stored access codes.
+            c.execute('ALTER TABLE study_sessions DROP COLUMN invite_id, DROP COLUMN access_code')
+            c.execute('DROP TABLE study_invites')
+            study_api._schema_ready = False
+            study_api.ensure_schema(c)
+            assert c.execute("SELECT to_regclass('study_invites') AS t").fetchone()['t'] is not None
+            columns = {row['column_name'] for row in c.execute("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='study_sessions'").fetchall()}
+            assert {'invite_id', 'access_code'} <= columns
     finally:
         with psycopg.connect(url, autocommit=True) as c:
             c.execute(f'DROP SCHEMA {schema} CASCADE')

@@ -21,7 +21,7 @@ type Session = {
   id: string; case_set_id: number; case_set_name: string; participant_code: string; language: 'de' | 'en'; pilot: boolean
   status: 'created' | 'running' | 'questionnaire' | 'completed' | 'aborted'; created_at: string; started_at: string | null; cases_finished_at: string | null; finished_at: string | null
   case_seconds: number | null; raw_tlx: number | null; usability: number | null; total: number; decided: number; correct: number; scored: number
-  accuracy: number | null; chats: number; active_seconds: number; created_by_name: string
+  accuracy: number | null; chats: number; active_seconds: number; created_by_name: string; access_code: string | null; invite_id: number | null
 }
 type Entry = {
   position: number; rank: number; name: string; reference: string; ai_code: string | null; confidence: number | null; decision: string | null; final_code: string | null
@@ -292,18 +292,23 @@ function nextCode(sessions: Session[]) {
   return `P${String((numbers.length ? Math.max(...numbers) : 0) + 1).padStart(2, '0')}`
 }
 
-function CodeDialog({ code, participant, onClose }: { code: string | null; participant: string; onClose: () => void }) {
+type Invite = { id: number; case_set_id: number; case_set_name: string; access_code: string; language: 'de' | 'en'; pilot: boolean; active: boolean; sessions: number; completed: number; created_at: string; created_by_name: string }
+type ShownCode = { code: string; title: string; shared: boolean }
+
+function CodeDialog({ shown, onClose }: { shown: ShownCode | null; onClose: () => void }) {
   const link = `${window.location.origin}/#study`
   const [copied, setCopied] = useState('')
   const copy = (value: string) => { void navigator.clipboard?.writeText(value).then(() => setCopied(value)) }
-  return <Dialog open={!!code} onOpenChange={value => { if (!value) { setCopied(''); onClose() } }}>
+  const close = () => { setCopied(''); onClose() }
+  return <Dialog open={!!shown} onOpenChange={value => { if (!value) close() }}>
     <DialogContent>
-      <DialogHeader><DialogTitle>Zugangscode für {participant}</DialogTitle><DialogDescription>Der Code wird nur jetzt angezeigt. Bei Verlust in der Übersicht einen neuen Code erzeugen.</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>{shown?.title}</DialogTitle><DialogDescription>{shown?.shared ? 'Diesen Code können beliebig viele Personen nutzen. Jede Person erhält automatisch einen eigenen Testlauf mit eigenem Teilnehmercode.' : 'Code und Link lassen sich in der Übersicht jederzeit wieder anzeigen.'}</DialogDescription></DialogHeader>
       <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted px-4 py-3"><span className="font-mono text-2xl tracking-widest">{code}</span><Button size="sm" variant="outline" onClick={() => code && copy(code)}><Copy data-icon="inline-start" />{copied === code ? 'Kopiert' : 'Kopieren'}</Button></div>
-        <div className="flex items-center justify-between gap-3 text-sm"><span className="truncate">Link für Teilnehmende: <span className="font-mono">{link}</span></span><Button size="sm" variant="outline" onClick={() => copy(link)}>{copied === link ? 'Kopiert' : 'Link kopieren'}</Button></div>
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted px-4 py-3"><span className="font-mono text-2xl tracking-widest">{shown?.code}</span><Button size="sm" variant="outline" onClick={() => shown && copy(shown.code)}><Copy data-icon="inline-start" />{copied === shown?.code ? 'Kopiert' : 'Kopieren'}</Button></div>
+        <div className="flex items-center justify-between gap-3 text-sm"><span className="truncate">Link: <span className="font-mono">{link}</span></span><Button size="sm" variant="outline" onClick={() => copy(link)}>{copied === link ? 'Kopiert' : 'Link kopieren'}</Button></div>
+        <Button variant="secondary" onClick={() => shown && copy(`Link: ${link}\nZugangscode: ${shown.code}`)}><Copy data-icon="inline-start" />{copied.startsWith('Link:') ? 'Kopiert' : 'Link und Code zusammen kopieren'}</Button>
       </div>
-      <DialogFooter><Button onClick={() => { setCopied(''); onClose() }}>Fertig</Button></DialogFooter>
+      <DialogFooter><Button onClick={close}>Fertig</Button></DialogFooter>
     </DialogContent>
   </Dialog>
 }
@@ -318,19 +323,23 @@ function RunsSection() {
   return detail ? <RunDetail id={detail} /> : <RunList />
 }
 
+type Action = { kind: 'abort' | 'delete' | 'code'; session: Session } | { kind: 'invite-delete' | 'invite-toggle'; invite: Invite }
+
 function RunList() {
   const [sessions, setSessions] = useState<Session[]>([])
+  const [invites, setInvites] = useState<Invite[]>([])
   const [sets, setSets] = useState<CaseSet[]>([])
-  const [form, setForm] = useState({ case_set_id: '', participant_code: '', language: 'de', pilot: false })
+  const [form, setForm] = useState({ case_set_id: '', participant_code: '', language: 'de', pilot: false, shared: false })
   const [codeTouched, setCodeTouched] = useState(false)
-  const [code, setCode] = useState<{ code: string; participant: string } | null>(null)
-  const [confirm, setConfirm] = useState<{ kind: 'abort' | 'delete' | 'code'; session: Session } | null>(null)
+  const [shown, setShown] = useState<ShownCode | null>(null)
+  const [confirm, setConfirm] = useState<Action | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
     try {
-      const [sessionList, setList] = await Promise.all([api<{ items: Session[] }>('sessions'), api<{ items: CaseSet[] }>('case-sets')])
+      const [sessionList, inviteList, setList] = await Promise.all([api<{ items: Session[] }>('sessions'), api<{ items: Invite[] }>('invites'), api<{ items: CaseSet[] }>('case-sets')])
       setSessions(sessionList.items)
+      setInvites(inviteList.items)
       setSets(setList.items)
       setError('')
     } catch (e) { setError(e instanceof Error ? e.message : 'Laden fehlgeschlagen.') }
@@ -347,46 +356,80 @@ function RunList() {
     setBusy(true)
     setError('')
     try {
-      const result = await api<{ access_code: string }>('sessions', 'POST', { case_set_id: Number(caseSetId), participant_code: participantCode, language: form.language, pilot: form.pilot })
-      setCode({ code: result.access_code, participant: participantCode })
-      setCodeTouched(false)
+      if (form.shared) {
+        const result = await api<{ access_code: string }>('invites', 'POST', { case_set_id: Number(caseSetId), language: form.language, pilot: form.pilot })
+        setShown({ code: result.access_code, title: 'Mehrfach-Code', shared: true })
+      } else {
+        const result = await api<{ access_code: string }>('sessions', 'POST', { case_set_id: Number(caseSetId), participant_code: participantCode, language: form.language, pilot: form.pilot })
+        setShown({ code: result.access_code, title: `Zugangscode für ${participantCode}`, shared: false })
+        setCodeTouched(false)
+      }
       await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'Anlegen fehlgeschlagen.') } finally { setBusy(false) }
   }
 
   async function run() {
     if (!confirm) return
-    const { kind, session } = confirm
+    const action = confirm
     setConfirm(null)
     setError('')
     try {
-      if (kind === 'abort') await api(`sessions/${session.id}/abort`, 'POST')
-      if (kind === 'delete') await api(`sessions/${session.id}`, 'DELETE')
-      if (kind === 'code') setCode({ code: (await api<{ access_code: string }>(`sessions/${session.id}/code`, 'POST')).access_code, participant: session.participant_code })
+      if (action.kind === 'abort') await api(`sessions/${action.session.id}/abort`, 'POST')
+      if (action.kind === 'delete') await api(`sessions/${action.session.id}`, 'DELETE')
+      if (action.kind === 'code') setShown({ code: (await api<{ access_code: string }>(`sessions/${action.session.id}/code`, 'POST')).access_code, title: `Neuer Zugangscode für ${action.session.participant_code}`, shared: false })
+      if (action.kind === 'invite-toggle') await api(`invites/${action.invite.id}/active`, 'POST', { active: !action.invite.active })
+      if (action.kind === 'invite-delete') await api(`invites/${action.invite.id}`, 'DELETE')
       await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'Aktion fehlgeschlagen.') }
   }
+
+  const ended = (item: Session) => item.status === 'completed' || item.status === 'aborted'
+  const dialog = !confirm ? null
+    : confirm.kind === 'abort' ? { title: 'Testlauf abbrechen?', text: `Der Zugang von ${confirm.session.participant_code} wird sofort gesperrt. Bisherige Angaben bleiben gespeichert.`, action: 'Abbrechen', destructive: true }
+      : confirm.kind === 'delete' ? { title: 'Testlauf löschen?', text: `Alle Daten von ${confirm.session.participant_code} (Entscheidungen, Zeiten, Rückfragen, Fragebogen) werden endgültig gelöscht, z. B. bei Widerruf der Einwilligung.`, action: 'Endgültig löschen', destructive: true }
+        : confirm.kind === 'code' ? { title: 'Neuen Zugangscode erzeugen?', text: 'Der bisherige Code wird ungültig. Bereits angemeldete Teilnehmende können weiterarbeiten.', action: 'Code erzeugen', destructive: false }
+          : confirm.kind === 'invite-toggle' ? { title: confirm.invite.active ? 'Mehrfach-Code deaktivieren?' : 'Mehrfach-Code wieder aktivieren?', text: confirm.invite.active ? 'Mit diesem Code kann niemand mehr einen neuen Testlauf starten. Laufende Testläufe sind nicht betroffen.' : 'Mit diesem Code können wieder neue Testläufe gestartet werden.', action: confirm.invite.active ? 'Deaktivieren' : 'Aktivieren', destructive: confirm.invite.active }
+            : { title: 'Mehrfach-Code löschen?', text: 'Der Code wird ungültig. Die damit gestarteten Testläufe und ihre Daten bleiben erhalten.', action: 'Löschen', destructive: true }
 
   return <Page title="Testläufe" description="Testläufe anlegen, Zugangscodes ausgeben und den Stand der Sitzungen verfolgen. Die Liste aktualisiert sich alle 15 Sekunden."
     actions={<Button variant="outline" onClick={load}><RefreshCw data-icon="inline-start" />Aktualisieren</Button>}>
     <ErrorBox error={error} />
     <Card className="shadow-none">
-      <CardHeader><CardTitle>Neuer Testlauf</CardTitle><CardDescription>Probeläufe dienen dem Test im Team; sie lassen das Fallset bearbeitbar und sind in der Auswertung standardmäßig ausgeblendet.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>Neuer Testlauf</CardTitle><CardDescription>Einzelner Code für eine Person oder ein Mehrfach-Code für beliebig viele Personen; jede Person erhält dabei automatisch einen eigenen Testlauf (P01, P02 …). Probeläufe lassen das Fallset bearbeitbar und sind in der Auswertung standardmäßig ausgeblendet.</CardDescription></CardHeader>
       <CardContent>{!sets.length ? <p className="text-sm text-muted-foreground">Zuerst unter „Fallsets“ ein Fallset anlegen.</p> :
-        <div className="grid items-end gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+        <div className="grid items-end gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto_auto]">
           <Field><FieldLabel>Fallset</FieldLabel><Select value={caseSetId} onValueChange={value => setForm({ ...form, case_set_id: value })}><SelectTrigger aria-label="Fallset"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{sets.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name} · {item.positions.length} Fälle</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-          <Field><FieldLabel htmlFor="participant-code">Teilnehmercode</FieldLabel><Input id="participant-code" value={participantCode} maxLength={20} onChange={e => { setCodeTouched(true); setForm({ ...form, participant_code: e.target.value }) }} /></Field>
+          <Field><FieldLabel htmlFor="participant-code">Teilnehmercode</FieldLabel>{form.shared ? <Input id="participant-code" disabled value="automatisch" /> : <Input id="participant-code" value={participantCode} maxLength={20} onChange={e => { setCodeTouched(true); setForm({ ...form, participant_code: e.target.value }) }} />}</Field>
           <Field><FieldLabel>Sprache</FieldLabel><Select value={form.language} onValueChange={value => setForm({ ...form, language: value })}><SelectTrigger aria-label="Sprache"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="de">Deutsch</SelectItem><SelectItem value="en">English</SelectItem></SelectGroup></SelectContent></Select></Field>
+          <label className="flex h-8 items-center gap-2 text-sm"><Switch checked={form.shared} onCheckedChange={value => setForm({ ...form, shared: value })} />Mehrfach-Code</label>
           <label className="flex h-8 items-center gap-2 text-sm"><Switch checked={form.pilot} onCheckedChange={value => setForm({ ...form, pilot: value })} />Probelauf</label>
-          <Button disabled={busy || !/^[A-Za-z0-9_-]{1,20}$/.test(participantCode)} onClick={create}><KeyRound data-icon="inline-start" />Anlegen</Button>
+          <Button disabled={busy || (!form.shared && !/^[A-Za-z0-9_-]{1,20}$/.test(participantCode))} onClick={create}><KeyRound data-icon="inline-start" />Anlegen</Button>
         </div>}
       </CardContent>
     </Card>
+    {invites.length > 0 && <Card className="shadow-none">
+      <CardHeader><CardTitle>Mehrfach-Codes</CardTitle><CardDescription>Jede Person, die einen dieser Codes eingibt, startet einen eigenen Testlauf. Die Testläufe erscheinen unten in der Liste.</CardDescription></CardHeader>
+      <CardContent><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Fallset</TableHead><TableHead>Sprache</TableHead><TableHead>Teilnahmen</TableHead><TableHead>Status</TableHead><TableHead>Angelegt</TableHead><TableHead /></TableRow></TableHeader>
+        <TableBody>{invites.map(item => <TableRow key={item.id}>
+          <TableCell className="py-4 font-mono tracking-wider">{item.access_code}{item.pilot && <Badge variant="outline" className="ml-2 font-sans tracking-normal">Probelauf</Badge>}</TableCell>
+          <TableCell>{item.case_set_name}</TableCell>
+          <TableCell className="uppercase">{item.language}</TableCell>
+          <TableCell className="tabular-nums">{item.sessions} gestartet · {item.completed} abgeschlossen</TableCell>
+          <TableCell>{item.active ? <Badge variant="secondary">Aktiv</Badge> : <Badge variant="outline">Deaktiviert</Badge>}</TableCell>
+          <TableCell className="text-xs text-muted-foreground">{dateTime(item.created_at)}<br />{item.created_by_name}</TableCell>
+          <TableCell className="text-right"><div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShown({ code: item.access_code, title: 'Mehrfach-Code', shared: true })}><KeyRound data-icon="inline-start" />Code & Link</Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirm({ kind: 'invite-toggle', invite: item })}>{item.active ? 'Deaktivieren' : 'Aktivieren'}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirm({ kind: 'invite-delete', invite: item })}>Löschen</Button>
+          </div></TableCell>
+        </TableRow>)}</TableBody>
+      </Table></CardContent>
+    </Card>}
     <Card className="shadow-none"><CardContent>
       <Table><TableHeader><TableRow><TableHead>Teilnehmer</TableHead><TableHead>Fallset</TableHead><TableHead>Status</TableHead><TableHead>Fortschritt</TableHead><TableHead>Dauer Fälle</TableHead><TableHead>Genauigkeit</TableHead><TableHead>Rückfragen</TableHead><TableHead>Raw TLX</TableHead><TableHead>Angelegt</TableHead><TableHead /></TableRow></TableHeader>
         <TableBody>
           {sessions.map(item => <TableRow key={item.id}>
-            <TableCell className="py-4"><span className="font-medium">{item.participant_code}</span> <span className="text-xs uppercase text-muted-foreground">{item.language}</span>{item.pilot && <Badge variant="outline" className="ml-2">Probelauf</Badge>}</TableCell>
+            <TableCell className="py-4"><span className="font-medium">{item.participant_code}</span> <span className="text-xs uppercase text-muted-foreground">{item.language}</span>{item.pilot && <Badge variant="outline" className="ml-2">Probelauf</Badge>}{item.invite_id !== null && <p className="text-xs text-muted-foreground">über Mehrfach-Code</p>}</TableCell>
             <TableCell>{item.case_set_name}</TableCell>
             <TableCell><Badge variant={item.status === 'completed' ? 'secondary' : item.status === 'aborted' ? 'destructive' : 'outline'}>{STATUS[item.status]}</Badge></TableCell>
             <TableCell className="tabular-nums">{item.decided} / {item.total}</TableCell>
@@ -397,8 +440,10 @@ function RunList() {
             <TableCell className="text-xs text-muted-foreground">{dateTime(item.created_at)}<br />{item.created_by_name}</TableCell>
             <TableCell className="text-right"><div className="flex justify-end gap-2">
               <Button size="sm" variant="outline" onClick={() => { window.location.hash = `study-runs/${item.id}` }}>Details</Button>
-              <Button size="sm" variant="ghost" disabled={item.status === 'completed' || item.status === 'aborted'} onClick={() => setConfirm({ kind: 'code', session: item })}>Neuer Code</Button>
-              <Button size="sm" variant="ghost" disabled={item.status === 'completed' || item.status === 'aborted'} onClick={() => setConfirm({ kind: 'abort', session: item })}>Abbrechen</Button>
+              {item.invite_id === null && (item.access_code && !ended(item)
+                ? <Button size="sm" variant="ghost" onClick={() => setShown({ code: item.access_code!, title: `Zugangscode für ${item.participant_code}`, shared: false })}>Code & Link</Button>
+                : <Button size="sm" variant="ghost" disabled={ended(item)} title={ended(item) ? 'Testlauf beendet' : 'Code wurde vor diesem Update nicht gespeichert'} onClick={() => setConfirm({ kind: 'code', session: item })}>Neuer Code</Button>)}
+              <Button size="sm" variant="ghost" disabled={ended(item)} onClick={() => setConfirm({ kind: 'abort', session: item })}>Abbrechen</Button>
               <Button size="sm" variant="ghost" onClick={() => setConfirm({ kind: 'delete', session: item })}>Löschen</Button>
             </div></TableCell>
           </TableRow>)}
@@ -406,11 +451,8 @@ function RunList() {
         </TableBody>
       </Table>
     </CardContent></Card>
-    <CodeDialog code={code?.code ?? null} participant={code?.participant ?? ''} onClose={() => setCode(null)} />
-    <Confirm open={!!confirm} onClose={() => setConfirm(null)} onConfirm={run} destructive={confirm?.kind !== 'code'}
-      title={confirm?.kind === 'abort' ? 'Testlauf abbrechen?' : confirm?.kind === 'delete' ? 'Testlauf löschen?' : 'Neuen Zugangscode erzeugen?'}
-      text={confirm?.kind === 'abort' ? `Der Zugang von ${confirm.session.participant_code} wird sofort gesperrt. Bisherige Angaben bleiben gespeichert.` : confirm?.kind === 'delete' ? `Alle Daten von ${confirm.session.participant_code} (Entscheidungen, Zeiten, Rückfragen, Fragebogen) werden endgültig gelöscht, z. B. bei Widerruf der Einwilligung.` : 'Der bisherige Code wird ungültig. Bereits angemeldete Teilnehmende können weiterarbeiten.'}
-      action={confirm?.kind === 'abort' ? 'Abbrechen' : confirm?.kind === 'delete' ? 'Endgültig löschen' : 'Code erzeugen'} />
+    <CodeDialog shown={shown} onClose={() => setShown(null)} />
+    <Confirm open={!!dialog} onClose={() => setConfirm(null)} onConfirm={run} destructive={dialog?.destructive} title={dialog?.title ?? ''} text={dialog?.text ?? ''} action={dialog?.action ?? ''} />
   </Page>
 }
 

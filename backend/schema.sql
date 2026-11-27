@@ -141,6 +141,17 @@ CREATE TABLE IF NOT EXISTS study_case_sets (
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT study_case_sets_run_fk FOREIGN KEY (run_id) REFERENCES classification_runs(id)
 );
+CREATE TABLE IF NOT EXISTS study_invites (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    case_set_id bigint NOT NULL REFERENCES study_case_sets(id),
+    access_hash text NOT NULL UNIQUE,
+    access_code text NOT NULL,
+    language text NOT NULL DEFAULT 'de' CHECK (language IN ('de', 'en')),
+    pilot boolean NOT NULL DEFAULT false,
+    active boolean NOT NULL DEFAULT true,
+    created_by bigint NOT NULL REFERENCES app_users(id),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS study_sessions (
     id uuid PRIMARY KEY,
     case_set_id bigint NOT NULL REFERENCES study_case_sets(id),
@@ -160,6 +171,8 @@ CREATE TABLE IF NOT EXISTS study_sessions (
     current_since timestamptz,
     CONSTRAINT study_sessions_run_fk FOREIGN KEY (run_id) REFERENCES classification_runs(id)
 );
+ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS access_code text;
+ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS invite_id bigint REFERENCES study_invites(id) ON DELETE SET NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS study_sessions_unique_participant ON study_sessions (case_set_id, lower(participant_code)) WHERE NOT pilot AND status <> 'aborted';
 CREATE TABLE IF NOT EXISTS study_entries (
     session_id uuid NOT NULL REFERENCES study_sessions(id) ON DELETE CASCADE,

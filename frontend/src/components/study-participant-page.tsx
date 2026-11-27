@@ -197,6 +197,11 @@ function Cases({ me, language, onChanged, message }: { me: Me; language: Languag
       const value = { ...data, entry: { ...data.entry, final_code: finalCode, certainty, rationale: rationale.trim(), decision: finalCode === data.ai.code ? 'confirmed' : 'corrected' } }
       setData(value)
       await onChanged()
+      // Jump to the next open case (wrapping around); stay when all cases are decided.
+      const open = new Set(me.cases.filter(item => !item.decided && item.rank !== rank).map(item => item.rank))
+      const following = [...me.cases.map(item => item.rank).filter(item => item > rank), ...me.cases.map(item => item.rank).filter(item => item < rank)]
+      const target = following.find(item => open.has(item))
+      if (target) setRank(target)
     } catch (e) { setError(message(e)) } finally { setBusy(false) }
   }
 
@@ -265,9 +270,15 @@ function Cases({ me, language, onChanged, message }: { me: Me; language: Languag
         </Card>
         <div className="flex flex-col gap-4">
           <Card className="shadow-none">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-3">{t.suggestion}<Badge>{data.ai.code ?? '–'}</Badge></CardTitle>
-              <CardDescription>{sectionName(data.ai.code, language)}{data.ai.code ? ' · ' : ''}{t.confidence}: {data.ai.confidence !== null ? `${(data.ai.confidence * 100).toLocaleString(language === 'de' ? 'de-DE' : 'en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %` : t.noConfidence}</CardDescription>
+            <CardHeader className="gap-3">
+              <CardTitle>{t.suggestion}</CardTitle>
+              <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2.5">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">{data.ai.code ?? '–'}</span>
+                <div className="min-w-0">
+                  <p className="font-semibold leading-snug text-primary">{sectionName(data.ai.code, language) || t.noSuggestion}</p>
+                  <p className="text-xs text-muted-foreground">{t.confidence}: {data.ai.confidence !== null ? `${(data.ai.confidence * 100).toLocaleString(language === 'de' ? 'de-DE' : 'en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %` : t.noConfidence}</p>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{data.ai.explanation || t.noExplanation}</p>

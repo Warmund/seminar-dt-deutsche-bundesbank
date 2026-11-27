@@ -1,7 +1,8 @@
 """Nutzerstudie: freely chosen case sets, participant test runs with access codes, timing and questionnaire.
 
-Participants never log in with an account. An admin creates a test run and receives a one-time access code;
-redeeming it yields a cookie that only grants access to the participant endpoints of that single test run.
+Participants never log in with an account. An admin creates either a test run with its own access code or a shared
+code; every redemption of a shared code starts a separate test run. Redeeming a code yields a cookie that only grants
+access to the participant endpoints of that single test run. Admins can display the codes again in the dashboard.
 Reference classes and evaluation results are never returned by participant endpoints.
 """
 import csv
@@ -46,7 +47,7 @@ _schema_ready = False
 
 
 def ensure_schema(connection):
-    """Create the study tables on first use, so that a deployment needs no manual migration.
+    """Create or update the study tables on first use, so that a deployment needs no manual migration.
 
     Only the study part of schema.sql is executed (all statements are idempotent). An advisory lock prevents
     concurrent serverless instances from creating the tables at the same time.
@@ -54,12 +55,16 @@ def ensure_schema(connection):
     global _schema_ready
     if _schema_ready:
         return
-    if connection.execute("SELECT to_regclass('study_access_tokens') AS name").fetchone()['name'] is None:
+    state = connection.execute(
+        "SELECT to_regclass('study_access_tokens') IS NOT NULL AND to_regclass('study_invites') IS NOT NULL AND EXISTS ("
+        "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'study_sessions' "
+        "AND column_name = 'invite_id') AS ready").fetchone()
+    if not state['ready']:
         ddl = Path(__file__).with_name('schema.sql').read_text(encoding='utf-8').split(SCHEMA_MARKER, 1)[1].split('\n', 1)[1]
         connection.execute('SELECT pg_advisory_xact_lock(7342001)')
         connection.execute(ddl)
         connection.commit()
-        logger.info('Nutzerstudie: Tabellen angelegt')
+        logger.info('Nutzerstudie: Tabellen angelegt bzw. aktualisiert')
     _schema_ready = True
 
 
@@ -91,7 +96,8 @@ def new_access_code(connection) -> tuple[str, str]:
     while True:
         raw = ''.join(secrets.choice(CODE_ALPHABET) for _ in range(8))
         hashed = code_hash(raw)
-        if not connection.execute('SELECT 1 FROM study_sessions WHERE access_hash=%s', (hashed,)).fetchone():
+        if not connection.execute('SELECT 1 FROM study_sessions WHERE access_hash=%s UNION ALL SELECT 1 FROM study_invites WHERE access_hash=%s',
+                                  (hashed, hashed)).fetchone():
             return f'{raw[:4]}-{raw[4:]}', hashed
 
 
@@ -164,9 +170,17 @@ def redeem(data: Access, request: Request, response: Response, connection: Study
     connection.commit()
     if attempt['attempts'] > 30:
         raise HTTPException(429, 'too_many_attempts')
-    session = connection.execute('SELECT * FROM study_sessions WHERE access_hash=%s', (code_hash(data.code),)).fetchone()
+    hashed = code_hash(data.code)
+    session = connection.execute('SELECT * FROM study_sessions WHERE access_hash=%s', (hashed,)).fetchone()
     if not session:
-        raise HTTPException(401, 'invalid_code')
+        invite = connection.execute('SELECT * FROM study_invites WHERE access_hash=%s', (hashed,)).fetchone()
+        if not invite:
+            raise HTTPException(401, 'invalid_code')
+        if not invite['active']:
+            raise HTTPException(410, 'code_used')
+        # A shared code starts a separate test run with the next free participant code for every person.
+        session_id = add_session(connection, invite['case_set_id'], None, invite['language'], invite['pilot'], invite['created_by'], invite['id'])
+        session = connection.execute('SELECT * FROM study_sessions WHERE id=%s', (session_id,)).fetchone()
     if session['status'] in ('completed', 'aborted'):
         raise HTTPException(410, 'code_used')
     connection.execute('DELETE FROM login_attempts WHERE client=%s', (client,))
@@ -461,8 +475,9 @@ def copy_case_set(case_set_id: int, connection: StudyDB, user=Depends(admin_user
 
 @app.delete('/api/study/admin/case-sets/{case_set_id}', dependencies=[Depends(origin_check), Depends(admin_user)])
 def delete_case_set(case_set_id: int, connection: StudyDB):
-    if connection.execute('SELECT 1 FROM study_sessions WHERE case_set_id=%s', (case_set_id,)).fetchone():
-        raise HTTPException(409, 'Zu diesem Fallset gibt es Testläufe. Bitte zuerst die Testläufe löschen.')
+    if connection.execute('SELECT 1 FROM study_sessions WHERE case_set_id=%s UNION ALL SELECT 1 FROM study_invites WHERE case_set_id=%s',
+                          (case_set_id, case_set_id)).fetchone():
+        raise HTTPException(409, 'Zu diesem Fallset gibt es Testläufe oder Mehrfach-Codes. Bitte diese zuerst löschen.')
     if not connection.execute('DELETE FROM study_case_sets WHERE id=%s RETURNING id', (case_set_id,)).fetchone():
         raise HTTPException(404, 'Fallset nicht gefunden.')
     return {'ok': True}
@@ -480,26 +495,44 @@ class NewSession(BaseModel):
     pilot: bool = False
 
 
-@app.post('/api/study/admin/sessions', status_code=201, dependencies=[Depends(origin_check)])
-def create_session(data: NewSession, connection: StudyDB, user=Depends(admin_user)):
-    case_set = connection.execute('SELECT * FROM study_case_sets WHERE id=%s FOR UPDATE', (data.case_set_id,)).fetchone()
+def next_participant_code(connection, case_set_id, pilot):
+    prefix = 'T' if pilot else 'P'
+    numbers = [int(match.group(1)) for row in connection.execute('SELECT participant_code FROM study_sessions WHERE case_set_id=%s AND pilot=%s',
+                                                                  (case_set_id, pilot)).fetchall()
+               if (match := re.fullmatch(prefix + r'(\d+)', row['participant_code'], re.IGNORECASE))]
+    return f'{prefix}{(max(numbers) if numbers else 0) + 1:02d}'
+
+
+def add_session(connection, case_set_id, participant_code, language, pilot, created_by, invite_id=None):
+    """Create a test run with its own random case order. Returns the id; the access code is set separately."""
+    case_set = connection.execute('SELECT * FROM study_case_sets WHERE id=%s FOR UPDATE', (case_set_id,)).fetchone()
     if not case_set:
         raise HTTPException(404, 'Fallset nicht gefunden.')
-    if not data.pilot and connection.execute(
+    participant_code = participant_code or next_participant_code(connection, case_set_id, pilot)
+    if not pilot and connection.execute(
             "SELECT 1 FROM study_sessions WHERE case_set_id=%s AND lower(participant_code)=lower(%s) AND NOT pilot AND status <> 'aborted'",
-            (data.case_set_id, data.participant_code)).fetchone():
+            (case_set_id, participant_code)).fetchone():
         raise HTTPException(409, 'Dieser Teilnehmercode ist für das Fallset bereits vergeben.')
     order = list(case_set['positions'])
     secrets.SystemRandom().shuffle(order)
-    code, hashed = new_access_code(connection)
     session_id = uuid.uuid4()
-    connection.execute('INSERT INTO study_sessions(id,case_set_id,run_id,participant_code,access_hash,language,pilot,case_order,created_by) '
-                       'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-                       (session_id, case_set['id'], case_set['run_id'], data.participant_code, hashed, data.language, data.pilot, order, user['id']))
+    # Test runs started from a shared code get an unusable random hash; they are reached via their cookie only.
+    connection.execute('INSERT INTO study_sessions(id,case_set_id,run_id,participant_code,access_hash,language,pilot,case_order,created_by,invite_id) '
+                       'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                       (session_id, case_set['id'], case_set['run_id'], participant_code, 'unused:' + secrets.token_hex(24), language, pilot,
+                        order, created_by, invite_id))
     with connection.cursor() as cursor:
         cursor.executemany('INSERT INTO study_entries(session_id,position,rank) VALUES (%s,%s,%s)',
                            [(session_id, position, rank) for rank, position in enumerate(order, start=1)])
-    log_event(connection, session_id, 'created', data={'by': user['username']})
+    log_event(connection, session_id, 'created', data={'invite_id': invite_id} if invite_id else {})
+    return session_id
+
+
+@app.post('/api/study/admin/sessions', status_code=201, dependencies=[Depends(origin_check)])
+def create_session(data: NewSession, connection: StudyDB, user=Depends(admin_user)):
+    session_id = add_session(connection, data.case_set_id, data.participant_code, data.language, data.pilot, user['id'])
+    code, hashed = new_access_code(connection)
+    connection.execute('UPDATE study_sessions SET access_hash=%s, access_code=%s WHERE id=%s', (hashed, code, session_id))
     return {'id': session_id, 'access_code': code}
 
 
@@ -511,7 +544,7 @@ def regenerate_code(session_id: uuid.UUID, connection: StudyDB):
     if session['status'] in ('completed', 'aborted'):
         raise HTTPException(409, 'Für abgeschlossene oder abgebrochene Testläufe wird kein Code mehr erzeugt.')
     code, hashed = new_access_code(connection)
-    connection.execute('UPDATE study_sessions SET access_hash=%s WHERE id=%s', (hashed, session_id))
+    connection.execute('UPDATE study_sessions SET access_hash=%s, access_code=%s WHERE id=%s', (hashed, code, session_id))
     log_event(connection, session_id, 'code_regenerated')
     return {'access_code': code}
 
@@ -534,6 +567,52 @@ def abort_session(session_id: uuid.UUID, connection: StudyDB):
 def delete_session(session_id: uuid.UUID, connection: StudyDB):
     if not connection.execute('DELETE FROM study_sessions WHERE id=%s RETURNING id', (session_id,)).fetchone():
         raise HTTPException(404, 'Testlauf nicht gefunden.')
+    return {'ok': True}
+
+
+class NewInvite(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    case_set_id: int
+    language: Literal['de', 'en'] = 'de'
+    pilot: bool = False
+
+
+@app.get('/api/study/admin/invites', dependencies=[Depends(admin_user)])
+def invites(connection: StudyDB):
+    return {'items': connection.execute(
+        'SELECT i.id, i.case_set_id, c.name AS case_set_name, i.access_code, i.language, i.pilot, i.active, i.created_at, u.username AS created_by_name, '
+        '(SELECT count(*) FROM study_sessions s WHERE s.invite_id=i.id) AS sessions, '
+        "(SELECT count(*) FROM study_sessions s WHERE s.invite_id=i.id AND s.status='completed') AS completed "
+        'FROM study_invites i JOIN study_case_sets c ON c.id=i.case_set_id JOIN app_users u ON u.id=i.created_by ORDER BY i.created_at DESC').fetchall()}
+
+
+@app.post('/api/study/admin/invites', status_code=201, dependencies=[Depends(origin_check)])
+def create_invite(data: NewInvite, connection: StudyDB, user=Depends(admin_user)):
+    if not connection.execute('SELECT 1 FROM study_case_sets WHERE id=%s', (data.case_set_id,)).fetchone():
+        raise HTTPException(404, 'Fallset nicht gefunden.')
+    code, hashed = new_access_code(connection)
+    row = connection.execute('INSERT INTO study_invites(case_set_id,access_hash,access_code,language,pilot,created_by) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id',
+                             (data.case_set_id, hashed, code, data.language, data.pilot, user['id'])).fetchone()
+    return {'id': row['id'], 'access_code': code}
+
+
+class InviteState(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    active: bool
+
+
+@app.post('/api/study/admin/invites/{invite_id}/active', dependencies=[Depends(origin_check), Depends(admin_user)])
+def set_invite_active(invite_id: int, data: InviteState, connection: StudyDB):
+    if not connection.execute('UPDATE study_invites SET active=%s WHERE id=%s RETURNING id', (data.active, invite_id)).fetchone():
+        raise HTTPException(404, 'Mehrfach-Code nicht gefunden.')
+    return {'ok': True}
+
+
+@app.delete('/api/study/admin/invites/{invite_id}', dependencies=[Depends(origin_check), Depends(admin_user)])
+def delete_invite(invite_id: int, connection: StudyDB):
+    # Test runs started with this code are kept; they only lose the reference to the code.
+    if not connection.execute('DELETE FROM study_invites WHERE id=%s RETURNING id', (invite_id,)).fetchone():
+        raise HTTPException(404, 'Mehrfach-Code nicht gefunden.')
     return {'ok': True}
 
 
@@ -560,7 +639,7 @@ def session_rows(connection, where='TRUE', params=()):
     sessions = connection.execute(
         'SELECT s.id, s.case_set_id, c.name AS case_set_name, s.participant_code, s.language, s.pilot, s.status, s.created_at, s.started_at, '
         's.cases_finished_at, s.finished_at, EXTRACT(EPOCH FROM (s.cases_finished_at - s.started_at)) AS case_seconds, '
-        'q.raw_tlx, q.usability, u.username AS created_by_name '
+        'q.raw_tlx, q.usability, u.username AS created_by_name, s.access_code, s.invite_id '
         'FROM study_sessions s JOIN study_case_sets c ON c.id=s.case_set_id JOIN app_users u ON u.id=s.created_by '
         f'LEFT JOIN study_questionnaires q ON q.session_id=s.id WHERE {where} ORDER BY s.created_at DESC', params).fetchall()
     entries = entry_rows(connection, f's.id = ANY(%s)', ([s['id'] for s in sessions],)) if sessions else []
