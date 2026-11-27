@@ -301,11 +301,11 @@ function CodeDialog({ shown, onClose }: { shown: ShownCode | null; onClose: () =
   const copy = (value: string) => { void navigator.clipboard?.writeText(value).then(() => setCopied(value)) }
   const close = () => { setCopied(''); onClose() }
   return <Dialog open={!!shown} onOpenChange={value => { if (!value) close() }}>
-    <DialogContent>
+    <DialogContent className="sm:max-w-lg">
       <DialogHeader><DialogTitle>{shown?.title}</DialogTitle><DialogDescription>{shown?.shared ? 'Diesen Code können beliebig viele Personen nutzen. Jede Person erhält automatisch einen eigenen Testlauf mit eigenem Teilnehmercode.' : 'Code und Link lassen sich in der Übersicht jederzeit wieder anzeigen.'}</DialogDescription></DialogHeader>
-      <div className="flex flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-4">
         <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted px-4 py-3"><span className="font-mono text-2xl tracking-widest">{shown?.code}</span><Button size="sm" variant="outline" onClick={() => shown && copy(shown.code)}><Copy data-icon="inline-start" />{copied === shown?.code ? 'Kopiert' : 'Kopieren'}</Button></div>
-        <div className="flex items-center justify-between gap-3 text-sm"><span className="truncate">Link: <span className="font-mono">{link}</span></span><Button size="sm" variant="outline" onClick={() => copy(link)}>{copied === link ? 'Kopiert' : 'Link kopieren'}</Button></div>
+        <div className="flex min-w-0 items-center justify-between gap-3 text-sm"><span className="min-w-0 break-all">Link: <span className="font-mono">{link}</span></span><Button size="sm" variant="outline" className="shrink-0" onClick={() => copy(link)}>{copied === link ? 'Kopiert' : 'Link kopieren'}</Button></div>
         <Button variant="secondary" onClick={() => shown && copy(`Link: ${link}\nZugangscode: ${shown.code}`)}><Copy data-icon="inline-start" />{copied.startsWith('Link:') ? 'Kopiert' : 'Link und Code zusammen kopieren'}</Button>
       </div>
       <DialogFooter><Button onClick={close}>Fertig</Button></DialogFooter>
